@@ -1,0 +1,42 @@
+[package]
+name = "lproxy-dv"
+version = "0.1.0"
+authors = ["linguohua <lghchinaidea@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[profile.release]
+lto = true
+
+[dependencies]
+futures = "0.1.28"
+failure = "0.1.5"
+tokio = "0.1.22"
+url = "2.1.0"
+tokio-tungstenite = "0.9.0"
+tungstenite = "0.9.1"
+tokio-tcp = "0.1.3"
+tokio-codec = "0.1.1"
+bytes = "0.4.12"
+byte = "0.2.4"
+nix = "0.15.0"
+tokio-io-timeout = "0.3.1"
+tokio-dns-unofficial = "0.4.0"
+libc = "0.2.62"
+native-tls = "0.2.3"
+tokio-io = "0.1.12"
+tokio-tls = "0.2.1"
+log = "0.4.8"
+#crossbeam = "0.7.2"
+stream-cancel = "0.4.4"
+#parking_lot = "0.9.0"
+tokio-udp = "0.1.5"
+flate2 = "1.0.11"
+serde_json = "1.0.40"
+serde = {version = "1.0.101"}
+tokio-runtime = "0.0.0"
+num_cpus = "1.10.1"
+
+[dependencies.signal-hook]
+version = "0.1.10"
+features = ["mio-support", "tokio-support"]
