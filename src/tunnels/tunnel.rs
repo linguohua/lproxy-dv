@@ -154,19 +154,19 @@ impl Tunnel {
 
                 let reqs = &mut self.requests;
                 let r = reqs.free(req_idx, req_tag);
-                if r {
+                if r && self.req_count > 0 {
                     self.req_count -= 1;
                 }
             }
             Cmd::ReqCreated => {
                 let req_idx = th.req_idx;
                 let req_tag = th.req_tag;
-                let b = Bytes::from(&bs[THEADER_SIZE..]);
+                let b = &bs[THEADER_SIZE..];
                 let offset = &mut 0;
                 let ip = b.read_with::<u32>(offset, LE).unwrap(); // 4 bytes
                 let port = b.read_with::<u16>(offset, LE).unwrap();
 
-                self.requests.alloc(req_idx, req_tag, port, ip);
+                self.requests.alloc(req_idx, req_tag);
 
                 // start connect to target
                 if super::proxy_request(self, tl, req_idx, req_tag, port, ip) {
@@ -362,7 +362,7 @@ impl Tunnel {
     }
 
     pub fn on_request_msg(&mut self, message: BytesMut, req_idx: u16, req_tag: u16) -> bool {
-        info!("[Tunnel]on_request_msg, req:{}", req_idx);
+        // info!("[Tunnel]on_request_msg, req:{}", req_idx);
 
         if !self.check_req_valid(req_idx, req_tag) {
             return false;
@@ -386,7 +386,7 @@ impl Tunnel {
                 return false;
             }
             _ => {
-                info!("[Tunnel]unbounded_send request msg, req_idx:{}", req_idx);
+                // info!("[Tunnel]unbounded_send request msg, req_idx:{}", req_idx);
                 self.flowctl_quota_decrease(req_idx);
             }
         }

@@ -1,6 +1,6 @@
 mod config;
-mod server;
 mod service;
+mod tlsserver;
 mod tunnels;
 
 use futures::future::lazy;

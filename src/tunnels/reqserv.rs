@@ -10,6 +10,7 @@ use tokio::prelude::*;
 use tokio::runtime::current_thread;
 use tokio_codec::BytesCodec;
 use tokio_tcp::TcpStream;
+use std::time::Duration;
 
 pub fn proxy_request(
     tun: &mut Tunnel,
@@ -32,6 +33,12 @@ pub fn proxy_request(
     let tl0 = tl.clone();
     let fut = TcpStream::connect(&sockaddr)
         .and_then(move |socket| {
+            // config tcp stream
+            socket.set_linger(None).unwrap();
+            let kduration = Duration::new(3, 0);
+            socket.set_keepalive(Some(kduration)).unwrap();
+            socket.set_nodelay(true).unwrap();
+
             let rawfd = socket.as_raw_fd();
             let framed = BytesCodec::new().framed(socket);
             let (sink, stream) = framed.split();

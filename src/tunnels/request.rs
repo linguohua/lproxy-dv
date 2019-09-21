@@ -13,8 +13,8 @@ pub struct Request {
     pub request_tx: Option<UnboundedSender<Bytes>>,
     pub trigger: Option<Trigger>,
 
-    pub ipv4_le: u32,
-    pub port_le: u16,
+    // pub ipv4_le: u32,
+    // pub port_le: u16,
 
     pub quota: u32,
 
@@ -30,8 +30,8 @@ impl Request {
             tag: 0,
             request_tx: None,
             trigger: None,
-            ipv4_le: 0,
-            port_le: 0,
+            // ipv4_le: 0,
+            // port_le: 0,
             is_inused: false,
             quota: PER_TCP_QUOTA,
             wait_task: None,
@@ -44,8 +44,8 @@ impl fmt::Debug for Request {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "Req {{ indx: {}, tag: {}, ip:{}, port:{} }}",
-            self.index, self.tag, self.ipv4_le, self.port_le
+            "Req {{ indx: {}, tag: {} }}",
+            self.index, self.tag,
         )
     }
 }

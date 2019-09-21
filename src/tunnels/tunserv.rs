@@ -1,6 +1,6 @@
 use super::LongLiveTM;
 use super::Tunnel;
-use crate::server::WSStreamInfo;
+use crate::tlsserver::WSStreamInfo;
 use futures::sink::Sink;
 use futures::{Future, Stream};
 use log::{debug, error, info};

@@ -17,7 +17,7 @@ impl Reqq {
         Reqq { elements: elements }
     }
 
-    pub fn alloc(&mut self, req_idx: u16, req_tag: u16, port: u16, ip: u32) {
+    pub fn alloc(&mut self, req_idx: u16, req_tag: u16) {
         let elements = &mut self.elements;
         if (req_idx as usize) >= elements.len() {
             error!("[Reqq] alloc failed, req_idx exceed");
@@ -28,8 +28,8 @@ impl Reqq {
         Reqq::clean_req(req);
 
         req.tag = req_tag;
-        req.ipv4_le = ip;
-        req.port_le = port;
+        // req.ipv4_le = ip;
+        // req.port_le = port;
         req.request_tx = None;
         req.trigger = None;
         req.quota = PER_TCP_QUOTA;

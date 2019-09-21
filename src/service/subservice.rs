@@ -1,5 +1,5 @@
 use crate::config::TunCfg;
-use crate::server::{Listener, WSStreamInfo};
+use crate::tlsserver::{Listener, WSStreamInfo};
 use crate::tunnels;
 use futures::future::lazy;
 use futures::stream::iter_ok;
