@@ -1,7 +1,7 @@
 mod config;
+mod server;
 mod service;
 mod tunnels;
-mod server;
 
 use futures::future::lazy;
 use futures::stream::Stream;
@@ -34,7 +34,7 @@ fn main() {
         let s = Service::new();
         s.borrow_mut().start(s.clone());
 
-        let wait_signal = Signals::new(&[signal_hook::SIGUSR1])
+        let wait_signal = Signals::new(&[signal_hook::SIGUSR1, signal_hook::SIGUSR2])
             .unwrap()
             .into_async()
             .unwrap()
@@ -42,7 +42,13 @@ fn main() {
             .map(move |sig| {
                 info!("got sigal:{:?}", sig.0);
                 // Service::stop
-                s.borrow_mut().stop();
+                if sig.0 == Some(signal_hook::SIGUSR1) {
+                    s.borrow_mut().stop();
+                } else if sig.0 == Some(signal_hook::SIGUSR2) {
+                    // just for test
+                    s.borrow_mut().restart();
+                }
+
                 ()
             })
             .map_err(|e| error!("{}", e.0));
