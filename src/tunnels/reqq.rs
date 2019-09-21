@@ -13,12 +13,10 @@ impl Reqq {
             elements.push(Request::new(n as u16));
         }
 
-        Reqq {
-            elements: elements,
-        }
+        Reqq { elements: elements }
     }
 
-    pub fn alloc(&mut self, req_idx:u16, req_tag:u16, port:u16, ip:u32) {
+    pub fn alloc(&mut self, req_idx: u16, req_tag: u16, port: u16, ip: u32) {
         let elements = &mut self.elements;
         if (req_idx as usize) >= elements.len() {
             error!("[Reqq] alloc failed, req_idx exceed");
@@ -26,12 +24,14 @@ impl Reqq {
         }
 
         let req = &mut elements[req_idx as usize];
+        Reqq::clean_req(req);
+
         req.tag = req_tag;
         req.ipv4_le = ip;
         req.port_le = port;
         req.request_tx = None;
         req.trigger = None;
-
+        req.quota = 100;
         req.is_inused = true;
     }
 
@@ -64,5 +64,10 @@ impl Reqq {
         req.request_tx = None;
         req.trigger = None;
         req.is_inused = false;
+
+        if req.wait_task.is_some() {
+            let wait_task = req.wait_task.take().unwrap();
+            wait_task.notify();
+        }
     }
 }
