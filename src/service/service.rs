@@ -12,9 +12,9 @@ const STATE_STARTING: u8 = 1;
 const STATE_RUNNING: u8 = 2;
 const STATE_STOPPING: u8 = 3;
 use super::SubServiceCtl;
+use futures::future::lazy;
 use std::cell::RefCell;
 use std::rc::Rc;
-use futures::future::lazy;
 
 type LongLive = Rc<RefCell<Service>>;
 
@@ -150,8 +150,7 @@ impl Service {
     fn do_cfg_monitor(s: LongLive) {
         info!("[Service]do_cfg_monitor");
 
-        let fut = lazy(move ||{
-            // TODO: use reponse to init TunCfg
+        let fut = lazy(move || {
             let cfg = config::TunCfg::new();
             let mut rf = s.borrow_mut();
             rf.save_cfg(cfg);
@@ -272,25 +271,22 @@ impl Service {
         self.save_monitor_trigger(trigger);
 
         // tokio timer, every 3 seconds
-        let task = Interval::new(
-            Instant::now(),
-            Duration::from_millis(CFG_MONITOR_INTERVAL),
-        )
-        .skip(1)
-        .take_until(tripwire)
-        .for_each(move |instant| {
-            debug!("[Service]monitor timer fire; instant={:?}", instant);
+        let task = Interval::new(Instant::now(), Duration::from_millis(CFG_MONITOR_INTERVAL))
+            .skip(1)
+            .take_until(tripwire)
+            .for_each(move |instant| {
+                debug!("[Service]monitor timer fire; instant={:?}", instant);
 
-            let rf = s2.borrow_mut();
-            rf.fire_instruction(Instruction::ServerCfgMonitor);
+                let rf = s2.borrow_mut();
+                rf.fire_instruction(Instruction::ServerCfgMonitor);
 
-            Ok(())
-        })
-        .map_err(|e| error!("[Service]start_monitor_timer interval errored; err={:?}", e))
-        .then(|_| {
-            info!("[Service] monitor timer future completed");
-            Ok(())
-        });;
+                Ok(())
+            })
+            .map_err(|e| error!("[Service]start_monitor_timer interval errored; err={:?}", e))
+            .then(|_| {
+                info!("[Service] monitor timer future completed");
+                Ok(())
+            });;
 
         current_thread::spawn(task);
     }

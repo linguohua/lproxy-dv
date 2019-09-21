@@ -103,7 +103,6 @@ pub fn proxy_request(
         })
         .map_err(move |e| {
             error!("[Proxy] tcp connect failed:{}", e);
-            // TODO: on request connect error
             let mut tun = tl0.borrow_mut();
             tun.on_request_connect_error(req_idx, req_tag);
             ()

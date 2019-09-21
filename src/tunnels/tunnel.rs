@@ -1,5 +1,5 @@
 use super::{Cmd, Reqq, THeader, THEADER_SIZE};
-use crate::config::KEEP_ALIVE_INTERVAL;
+use crate::config::{KEEP_ALIVE_INTERVAL, PER_TCP_QUOTA};
 use byte::*;
 use bytes::Bytes;
 use bytes::BytesMut;
@@ -42,11 +42,12 @@ impl Tunnel {
         tid: usize,
         tx: UnboundedSender<(u16, u16, Message)>,
         rawfd: RawFd,
-        is_for_dns: bool,
+        dns_server_addr: Option<SocketAddr>
     ) -> LongLiveTun {
         info!("[Tunnel]new Tunnel, idx:{}", tid);
         let size = 5;
         let rtt_queue = vec![0; size];
+        let is_for_dns = dns_server_addr.is_some();
 
         Rc::new(RefCell::new(Tunnel {
             tunnel_id: tid,
@@ -394,8 +395,8 @@ impl Tunnel {
         let req = &mut requests.elements[req_idx2];
 
         req.quota += 1;
-
-        if req.wait_task.is_some() {
+        const HALF_QUOTA: u32 = PER_TCP_QUOTA / 2;
+        if req.quota >= HALF_QUOTA && req.wait_task.is_some() {
             let wait_task = req.wait_task.take().unwrap();
             wait_task.notify();
         }

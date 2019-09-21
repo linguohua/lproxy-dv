@@ -44,7 +44,11 @@ fn start_listener(
     dnstmsstubs: Vec<TunMgrStub>,
     tmstubs: Vec<TunMgrStub>,
 ) -> SubServiceCtl {
-    info!("[SubService]start_listener, tm count:{}", tmstubs.len());
+    info!(
+        "[SubService]start_listener, tm count:{}, dns tm count:{}",
+        tmstubs.len(),
+        dnstmsstubs.len()
+    );
 
     let (tx, rx) = unbounded();
     let handler = std::thread::spawn(move || {

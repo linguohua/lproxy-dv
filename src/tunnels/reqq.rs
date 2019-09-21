@@ -1,3 +1,4 @@
+use crate::config::PER_TCP_QUOTA;
 use super::Request;
 
 use log::error;
@@ -31,7 +32,7 @@ impl Reqq {
         req.port_le = port;
         req.request_tx = None;
         req.trigger = None;
-        req.quota = 100;
+        req.quota = PER_TCP_QUOTA;
         req.is_inused = true;
     }
 

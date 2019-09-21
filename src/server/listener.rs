@@ -2,7 +2,7 @@ use crate::config::TunCfg;
 use crate::service::SubServiceCtlCmd;
 use crate::service::TunMgrStub;
 use failure::Error;
-use log::error;
+use log::{error, info};
 use native_tls::Identity;
 use std::cell::RefCell;
 use std::fs::File;
@@ -35,16 +35,22 @@ pub struct Listener {
     tmindex: usize,
     dns_tmindex: usize,
     listener_trigger: Option<Trigger>,
+    listen_addr: String,
+    pkcs12: String,
+    pkcs12_password: String,
 }
 
 impl Listener {
-    pub fn new(_cfg: &TunCfg, dns_tmstub: Vec<TunMgrStub>, tmstub: Vec<TunMgrStub>) -> LongLive {
+    pub fn new(cfg: &TunCfg, dns_tmstub: Vec<TunMgrStub>, tmstub: Vec<TunMgrStub>) -> LongLive {
         Rc::new(RefCell::new(Listener {
             dns_tmstub,
             tmstub,
             tmindex: 0,
             dns_tmindex: 0,
             listener_trigger: None,
+            listen_addr: cfg.listen_addr.to_string(),
+            pkcs12: cfg.pkcs12.to_string(),
+            pkcs12_password: cfg.pkcs12_password.to_string(),
         }))
     }
 
@@ -58,15 +64,19 @@ impl Listener {
 
     fn start_server(&mut self, ll: LongLive) -> Result<(), Error> {
         // Bind the server's socket
-        let addr = "127.0.0.1:12345".parse()?;
+        let addr = self.listen_addr.parse()?;
         let tcp = TcpListener::bind(&addr)?;
+        info!(
+            "[Server]listener at:{}, pkcs12:{}",
+            self.listen_addr, self.pkcs12
+        );
 
         // Create the TLS acceptor.
         // let der = include_bytes!("identity.p12");
-        let mut file = File::open("/home/abc/identity.pfx").unwrap();
+        let mut file = File::open(&self.pkcs12).unwrap();
         let mut identity = vec![];
         file.read_to_end(&mut identity).unwrap();
-        let identity = Identity::from_pkcs12(&identity, "123456").unwrap();
+        let identity = Identity::from_pkcs12(&identity, &self.pkcs12_password).unwrap();
         let tls_acceptor =
             tokio_tls::TlsAcceptor::from(native_tls::TlsAcceptor::builder(identity).build()?);
 
@@ -83,8 +93,6 @@ impl Listener {
                 let tls_accept = tls_acceptor
                     .accept(tcp)
                     .and_then(move |tls| {
-                        println!("accept a tls");
-
                         let path = Rc::new(RefCell::new(String::new()));
                         let path_clone = path.clone();
                         let cb = move |req: &Request| {
@@ -98,7 +106,7 @@ impl Listener {
                         let fut = accept_hdr_async(tls, cb)
                             .and_then(move |ws_stream| {
                                 let p = path.borrow();
-                                println!("path:{}", p);
+                                println!("[Server]path:{}", p);
 
                                 let s = ll.clone();
                                 let mut s = s.borrow_mut();
@@ -111,14 +119,14 @@ impl Listener {
                                 Ok(())
                             })
                             .or_else(|e| {
-                                println!("websocket error:{}", e);
+                                println!("[Server]websocket error:{}", e);
                                 Ok(())
                             });
 
                         fut
                     })
                     .map_err(|err| {
-                        println!("TLS accept error: {:?}", err);
+                        println!("[Server]TLS accept error: {:?}", err);
                         ()
                     });
 
@@ -127,7 +135,7 @@ impl Listener {
                 Ok(())
             })
             .map_err(|err| {
-                println!("server error {:?}", err);
+                println!("[Server]server error {:?}", err);
             });
 
         current_thread::spawn(server);
@@ -138,7 +146,7 @@ impl Listener {
     fn on_accept_dns_websocket(&mut self, rawfd: RawFd, ws: WSStream, path: String) {
         let index = self.dns_tmindex;
         if index >= self.dns_tmstub.len() {
-            error!("[ReqMgr]no tm to handle tcpstream");
+            error!("[Server]no tm to handle tcpstream");
             return;
         }
 
@@ -151,7 +159,7 @@ impl Listener {
         let tx = &self.dns_tmstub[index];
         let cmd = SubServiceCtlCmd::TcpTunnel(wsinfo);
         if let Err(e) = tx.ctl_tx.unbounded_send(cmd) {
-            error!("[ReqMgr]send req to tm failed:{}", e);
+            error!("[Server]send req to tm failed:{}", e);
         }
 
         // move to next tm
@@ -161,7 +169,7 @@ impl Listener {
     fn on_accept_proxy_websocket(&mut self, rawfd: RawFd, ws: WSStream, path: String) {
         let index = self.tmindex;
         if index >= self.tmstub.len() {
-            error!("[ReqMgr]no tm to handle tcpstream");
+            error!("[Server]no tm to handle tcpstream");
             return;
         }
 
@@ -174,7 +182,7 @@ impl Listener {
         let tx = &self.tmstub[index];
         let cmd = SubServiceCtlCmd::TcpTunnel(wsinfo);
         if let Err(e) = tx.ctl_tx.unbounded_send(cmd) {
-            error!("[ReqMgr]send req to tm failed:{}", e);
+            error!("[Server]send req to tm failed:{}", e);
         }
 
         // move to next tm

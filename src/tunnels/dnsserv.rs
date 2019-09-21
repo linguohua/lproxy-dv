@@ -21,7 +21,6 @@ pub fn proxy_dns(t: &Tunnel, tl: LongLiveTun, msg_buf: Vec<u8>, port: u16, ip32:
             let timeout = 2000;
             let rd = RecvDgram::new(socket, vec![0u8; MAX_DATAGRAM_SIZE], timeout);
             let recv_fut = rd.and_then(move |(_, data, len, _)| {
-                // TODO: add recv timeout
                 tl.borrow().on_dns_reply(data, len, port, ip32);
                 Ok(())
             });

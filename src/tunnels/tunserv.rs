@@ -19,7 +19,7 @@ pub fn serve_websocket(wsinfo: WSStreamInfo, s: LongLiveTM) {
     let rawfd = wsinfo.rawfd;
     let s2 = s.clone();
     let mut rf = s.borrow_mut();
-    let t = Tunnel::new(rf.next_tunnel_id(), tx, rawfd, rf.is_dns_tun);
+    let t = Tunnel::new(rf.next_tunnel_id(), tx, rawfd, rf.dns_server_addr);
     if let Err(_) = rf.on_tunnel_created(t.clone()) {
         // DROP all
         return;

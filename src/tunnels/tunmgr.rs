@@ -4,6 +4,7 @@ use failure::Error;
 use log::{debug, error, info};
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::net::SocketAddr;
 use std::rc::Rc;
 use std::result::Result;
 use std::time::{Duration, Instant};
@@ -17,6 +18,7 @@ pub type LongLiveTM = LongLive;
 
 pub struct TunMgr {
     pub is_dns_tun: bool,
+    pub dns_server_addr: Option<SocketAddr>,
     tunnel_id: usize,
     tunnels_map: HashMap<usize, Rc<RefCell<Tunnel>>>,
     keepalive_trigger: Option<Trigger>,
@@ -24,13 +26,22 @@ pub struct TunMgr {
 }
 
 impl TunMgr {
-    pub fn new(_cfg: &TunCfg, dns: bool) -> LongLive {
+    pub fn new(cfg: &TunCfg, dns: bool) -> LongLive {
+        let dns_server_addr;
+        if dns {
+            // if dns_server_addr invalid, panic
+            dns_server_addr = Some(cfg.dns_server_addr.parse().unwrap());
+        } else {
+            dns_server_addr = None;
+        }
+
         Rc::new(RefCell::new(TunMgr {
             is_dns_tun: dns,
             tunnel_id: 0,
             tunnels_map: HashMap::new(),
             keepalive_trigger: None,
             discarded: false,
+            dns_server_addr,
         }))
     }
 

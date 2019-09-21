@@ -1,6 +1,7 @@
-use futures::task::Task;
+use crate::config::PER_TCP_QUOTA;
 use bytes::Bytes;
 use futures::sync::mpsc::UnboundedSender;
+use futures::task::Task;
 use std::fmt;
 use stream_cancel::Trigger;
 
@@ -29,8 +30,8 @@ impl Request {
             ipv4_le: 0,
             port_le: 0,
             is_inused: false,
-            quota:100,
-            wait_task:None,
+            quota: PER_TCP_QUOTA,
+            wait_task: None,
         }
     }
 }
