@@ -4,6 +4,7 @@ use futures::sync::mpsc::UnboundedSender;
 use futures::task::Task;
 use std::fmt;
 use stream_cancel::Trigger;
+use std::os::unix::io::RawFd;
 
 pub struct Request {
     pub index: u16,
@@ -18,6 +19,8 @@ pub struct Request {
     pub quota: u32,
 
     pub wait_task: Option<Task>,
+
+    pub rawfd: Option<RawFd>,
 }
 
 impl Request {
@@ -32,6 +35,7 @@ impl Request {
             is_inused: false,
             quota: PER_TCP_QUOTA,
             wait_task: None,
+            rawfd: None,
         }
     }
 }

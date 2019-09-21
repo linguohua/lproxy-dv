@@ -11,6 +11,7 @@ use tokio::runtime::current_thread;
 pub fn serve_websocket(wsinfo: WSStreamInfo, s: LongLiveTM) {
     let mut wsinfo = wsinfo;
     let ws_stream = wsinfo.ws.take().unwrap();
+    let tunnel_cap = find_cap_from_query_string(&wsinfo.path);
 
     // Create a channel for our stream, which other sockets will use to
     // send us messages. Then register our address with the stream to send
@@ -19,7 +20,13 @@ pub fn serve_websocket(wsinfo: WSStreamInfo, s: LongLiveTM) {
     let rawfd = wsinfo.rawfd;
     let s2 = s.clone();
     let mut rf = s.borrow_mut();
-    let t = Tunnel::new(rf.next_tunnel_id(), tx, rawfd, rf.dns_server_addr);
+    let t = Tunnel::new(
+        rf.next_tunnel_id(),
+        tx,
+        rawfd,
+        rf.dns_server_addr,
+        tunnel_cap,
+    );
     if let Err(_) = rf.on_tunnel_created(t.clone()) {
         // DROP all
         return;
@@ -117,4 +124,30 @@ where
             }
         }
     }
+}
+
+fn find_cap_from_query_string(path: &str) -> usize {
+    if let Some(pos1) = path.find("?") {
+        let substr = &path[pos1 + 1..];
+        if let Some(pos2) = substr.find("cap=") {
+            let param_str: &str;
+            let substr = &substr[pos2 + 4..];
+            if let Some(pos3) = substr.find("&") {
+                param_str = &substr[..pos3];
+            } else {
+                param_str = substr;
+            }
+
+            if let Ok(t) = param_str.parse::<usize>() {
+                if t > 1024 {
+                    info!("[tunserv] tunnel cap from query string is too large:{}", t);
+                    return 0;
+                } else {
+                    return t;
+                }
+            }
+        }
+    }
+
+    0
 }

@@ -42,9 +42,13 @@ impl Tunnel {
         tid: usize,
         tx: UnboundedSender<(u16, u16, Message)>,
         rawfd: RawFd,
-        dns_server_addr: Option<SocketAddr>
+        dns_server_addr: Option<SocketAddr>,
+        cap: usize,
     ) -> LongLiveTun {
-        info!("[Tunnel]new Tunnel, idx:{}", tid);
+        info!(
+            "[Tunnel]new Tunnel, idx:{}, cap:{}, dns:{:?}",
+            tid, cap, dns_server_addr
+        );
         let size = 5;
         let rtt_queue = vec![0; size];
         let is_for_dns = dns_server_addr.is_some();
@@ -63,14 +67,19 @@ impl Tunnel {
 
             req_count: 0,
 
-            requests: Reqq::new(5),
-            dns_server_addr: None,
+            requests: Reqq::new(cap),
+            dns_server_addr: dns_server_addr,
         }))
     }
 
     pub fn on_tunnel_msg(&mut self, msg: Message, tl: LongLiveTun) {
         // info!("[Tunnel]on_tunnel_msg");
+        if msg.is_ping() {
+            return;
+        }
+
         if msg.is_pong() {
+            // info!("[Tunnel]on pong msg");
             self.on_pong(msg);
 
             return;
@@ -126,16 +135,23 @@ impl Tunnel {
                     }
                 }
             }
-            Cmd::ReqServerFinished => {
-                // server finished
+            Cmd::ReqClientFinished => {
+                // client finished
                 let req_idx = th.req_idx;
                 let req_tag = th.req_tag;
+                info!(
+                    "[Tunnel] ReqClientFinished, idx:{}, tag:{}",
+                    req_idx, req_tag
+                );
+
                 self.free_request_tx(req_idx, req_tag);
             }
-            Cmd::ReqServerClosed => {
-                // server finished
+            Cmd::ReqClientClosed => {
+                // client closed
                 let req_idx = th.req_idx;
                 let req_tag = th.req_tag;
+                info!("[Tunnel] ReqClientClosed, idx:{}, tag:{}", req_idx, req_tag);
+
                 let reqs = &mut self.requests;
                 let r = reqs.free(req_idx, req_tag);
                 if r {
@@ -153,7 +169,9 @@ impl Tunnel {
                 self.requests.alloc(req_idx, req_tag, port, ip);
 
                 // start connect to target
-                super::proxy_request(self, tl, req_idx, req_tag, port, ip);
+                if super::proxy_request(self, tl, req_idx, req_tag, port, ip) {
+                    self.req_count += 1;
+                }
             }
             _ => {
                 error!("[Tunnel]unsupport cmd:{:?}, discard msg", cmd);
@@ -182,7 +200,9 @@ impl Tunnel {
                     e
                 );
             }
-            _ => info!("[Tunnel]on_dns_reply unbounded_send request msg",),
+            _ => {
+                //info!("[Tunnel]on_dns_reply unbounded_send request msg",)
+            }
         }
     }
 
@@ -322,7 +342,7 @@ impl Tunnel {
             let hsize = THEADER_SIZE;
             let buf = &mut vec![0; hsize];
 
-            let th = THeader::new(Cmd::ReqClientClosed, req_idx, req_tag);
+            let th = THeader::new(Cmd::ReqServerClosed, req_idx, req_tag);
             let msg_header = &mut buf[0..hsize];
             th.write_to(msg_header);
 
@@ -342,7 +362,7 @@ impl Tunnel {
     }
 
     pub fn on_request_msg(&mut self, message: BytesMut, req_idx: u16, req_tag: u16) -> bool {
-        info!("[ReqMgr]on_request_msg, req:{}", req_idx);
+        info!("[Tunnel]on_request_msg, req:{}", req_idx);
 
         if !self.check_req_valid(req_idx, req_tag) {
             return false;
@@ -362,11 +382,11 @@ impl Tunnel {
         let result = self.tx.unbounded_send((req_idx, req_tag, wmsg));
         match result {
             Err(e) => {
-                error!("[ReqMgr]request tun send error:{}, tun_tx maybe closed", e);
+                error!("[Tunnel]request tun send error:{}, tun_tx maybe closed", e);
                 return false;
             }
             _ => {
-                info!("[ReqMgr]unbounded_send request msg, req_idx:{}", req_idx);
+                info!("[Tunnel]unbounded_send request msg, req_idx:{}", req_idx);
                 self.flowctl_quota_decrease(req_idx);
             }
         }
@@ -420,7 +440,7 @@ impl Tunnel {
     }
 
     pub fn on_request_recv_finished(&mut self, req_idx: u16, req_tag: u16) {
-        info!("[ReqMgr]on_request_recv_finished:{}", req_idx);
+        info!("[Tunnel]on_request_recv_finished:{}", req_idx);
 
         if !self.check_req_valid(req_idx, req_tag) {
             return;
@@ -429,7 +449,7 @@ impl Tunnel {
         let hsize = THEADER_SIZE;
         let buf = &mut vec![0; hsize];
 
-        let th = THeader::new(Cmd::ReqClientFinished, req_idx, req_tag);
+        let th = THeader::new(Cmd::ReqServerFinished, req_idx, req_tag);
         let msg_header = &mut buf[0..hsize];
         th.write_to(msg_header);
 
@@ -439,7 +459,7 @@ impl Tunnel {
         match result {
             Err(e) => {
                 error!(
-                    "[ReqMgr]on_request_recv_finished, tun send error:{}, tun_tx maybe closed",
+                    "[Tunnel]on_request_recv_finished, tun send error:{}, tun_tx maybe closed",
                     e
                 );
             }

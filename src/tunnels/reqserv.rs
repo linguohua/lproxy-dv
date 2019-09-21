@@ -18,14 +18,17 @@ pub fn proxy_request(
     req_tag: u16,
     port: u16,
     ip32: u32,
-) {
+) -> bool {
     let sockaddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::from(ip32)), port);
     let (tx, rx) = futures::sync::mpsc::unbounded();
     if let Err(_) = tun.save_request_tx(tx, req_idx, req_tag) {
         error!("[Proxy]save_request_tx failed");
-        return;
+        return false;
     }
 
+    info!("[Proxy] proxy request to:{:?}", sockaddr);
+
+    let sockaddr = "127.0.0.1:8001".parse().unwrap();
     let tl0 = tl.clone();
     let fut = TcpStream::connect(&sockaddr)
         .and_then(move |socket| {
@@ -51,15 +54,15 @@ pub fn proxy_request(
 
             // send future
             let send_fut = sink.send_all(rx.map_err(|e| {
-                error!("[Server]sink send_all failed:{:?}", e);
+                error!("[Proxy]sink send_all failed:{:?}", e);
                 std::io::Error::from(std::io::ErrorKind::Other)
             }));
 
             let send_fut = send_fut.and_then(move |_| {
-                info!("[Server]send_fut end, index:{}", req_idx);
+                info!("[Proxy]send_fut end, index:{}", req_idx);
                 // shutdown read direction
                 if let Err(e) = shutdown(rawfd, Shutdown::Read) {
-                    error!("[Server]shutdown rawfd error:{}", e);
+                    error!("[Proxy]shutdown rawfd error:{}", e);
                 }
 
                 Ok(())
@@ -92,6 +95,7 @@ pub fn proxy_request(
                 .map_err(|_| ())
                 .join(send_fut.map_err(|_| ()))
                 .then(move |_| {
+                    info!("[Proxy] tcp both futures completed");
                     let mut tun = tl4.borrow_mut();
                     tun.on_request_closed(req_idx, req_tag);
 
@@ -109,20 +113,22 @@ pub fn proxy_request(
         });
 
     current_thread::spawn(fut);
+
+    true
 }
 
 struct FlowCtl {
     tl: LongLiveTun,
-    req_tx: u16,
+    req_idx: u16,
     req_tag: u16,
     prev_error: bool,
 }
 
 impl FlowCtl {
-    pub fn new(tl: LongLiveTun, req_tx: u16, req_tag: u16, prev_error: bool) -> FlowCtl {
+    pub fn new(tl: LongLiveTun, req_idx: u16, req_tag: u16, prev_error: bool) -> FlowCtl {
         FlowCtl {
             tl,
-            req_tx,
+            req_idx,
             req_tag,
             prev_error,
         }
@@ -141,11 +147,13 @@ impl Future for FlowCtl {
         let quota_ready = self
             .tl
             .borrow_mut()
-            .flowctl_quota_poll(self.req_tx, self.req_tag);
+            .flowctl_quota_poll(self.req_idx, self.req_tag);
         if quota_ready {
+            //info!("[Proxy] quota ready! {}:{}", self.req_idx, self.req_tag);
             return Ok(Async::Ready(()));
         }
 
+        //info!("[Proxy] quota not ready! {}:{}", self.req_idx, self.req_tag);
         Ok(Async::NotReady)
     }
 }

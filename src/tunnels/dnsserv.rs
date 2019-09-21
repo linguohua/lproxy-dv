@@ -13,6 +13,7 @@ pub fn proxy_dns(t: &Tunnel, tl: LongLiveTun, msg_buf: Vec<u8>, port: u16, ip32:
     let local_addr: SocketAddr = "0.0.0.0:0".parse().unwrap();
     let udp = UdpSocket::bind(&local_addr).unwrap();
 
+    // FOR DNS msg, 600 should be enough
     const MAX_DATAGRAM_SIZE: usize = 600;
     let fut = udp
         .send_dgram(msg_buf, addr)
@@ -72,6 +73,7 @@ where
     fn poll(&mut self) -> Poll<Self::Item, std::io::Error> {
         match self.delay.poll() {
             Ok(Async::Ready(_)) => {
+                // info!("[RecvDgram]recv timeout");
                 return Err(std::io::Error::from(std::io::ErrorKind::TimedOut));
             }
             _ => {}

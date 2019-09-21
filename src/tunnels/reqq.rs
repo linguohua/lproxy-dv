@@ -1,7 +1,7 @@
-use crate::config::PER_TCP_QUOTA;
 use super::Request;
-
+use crate::config::PER_TCP_QUOTA;
 use log::error;
+use nix::sys::socket::{shutdown, Shutdown};
 
 pub struct Reqq {
     pub elements: Vec<Request>,
@@ -48,6 +48,10 @@ impl Reqq {
             return false;
         }
 
+        if !req.is_inused {
+            return false;
+        }
+
         Reqq::clean_req(req);
 
         true
@@ -69,6 +73,17 @@ impl Reqq {
         if req.wait_task.is_some() {
             let wait_task = req.wait_task.take().unwrap();
             wait_task.notify();
+        }
+
+        if req.rawfd.is_some() {
+            let rawfd = req.rawfd.take().unwrap();
+            let r = shutdown(rawfd, Shutdown::Both);
+            match r {
+                Err(e) => {
+                    error!("[Reqq]close_rawfd failed:{}", e);
+                }
+                _ => {}
+            }
         }
     }
 }
