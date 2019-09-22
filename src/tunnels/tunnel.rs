@@ -17,6 +17,11 @@ use tungstenite::protocol::Message;
 
 pub type LongLiveTun = Rc<RefCell<Tunnel>>;
 
+pub enum HostInfo {
+    IP(u32),
+    Domain(String),
+}
+
 pub struct Tunnel {
     pub tunnel_id: usize,
     pub tx: UnboundedSender<(u16, u16, Message)>,
@@ -161,15 +166,32 @@ impl Tunnel {
             Cmd::ReqCreated => {
                 let req_idx = th.req_idx;
                 let req_tag = th.req_tag;
+
                 let b = &bs[THEADER_SIZE..];
                 let offset = &mut 0;
-                let ip = b.read_with::<u32>(offset, LE).unwrap(); // 4 bytes
-                let port = b.read_with::<u16>(offset, LE).unwrap();
+                let address_type = b.read_with::<u8>(offset, LE).unwrap();
+                let host;
+                if address_type == 1 {
+                    // domain name
+                    let domain_name_len: usize = b.read_with::<u8>(offset, LE).unwrap() as usize;
+                    let domain_name_bytes = &b[2..(2 + domain_name_len)];
+                    host = HostInfo::Domain(
+                        std::str::from_utf8(domain_name_bytes).unwrap().to_string(),
+                    );
 
+                    *offset = *offset + domain_name_len;
+                } else {
+                    // default: Ipv4
+                    let ip = b.read_with::<u32>(offset, LE).unwrap(); // 4 bytes
+                    host = HostInfo::IP(ip);
+                }
+
+                // port, u16
+                let port = b.read_with::<u16>(offset, LE).unwrap();
                 self.requests.alloc(req_idx, req_tag);
 
                 // start connect to target
-                if super::proxy_request(self, tl, req_idx, req_tag, port, ip) {
+                if super::proxy_request(self, tl, req_idx, req_tag, port, host) {
                     self.req_count += 1;
                 }
             }
