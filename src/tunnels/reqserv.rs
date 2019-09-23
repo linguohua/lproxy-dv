@@ -187,12 +187,15 @@ impl Future for FlowCtl {
             .tl
             .borrow_mut()
             .flowctl_quota_poll(self.req_idx, self.req_tag);
-        if quota_ready {
-            //info!("[Proxy] quota ready! {}:{}", self.req_idx, self.req_tag);
-            return Ok(Async::Ready(()));
+        match quota_ready {
+            Err(_) => Err(std::io::Error::from(std::io::ErrorKind::NotConnected)),
+            Ok(t) => {
+                if t {
+                    return Ok(Async::Ready(()));
+                } else {
+                    return Ok(Async::NotReady);
+                }
+            }
         }
-
-        //info!("[Proxy] quota not ready! {}:{}", self.req_idx, self.req_tag);
-        Ok(Async::NotReady)
     }
 }

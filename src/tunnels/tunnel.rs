@@ -491,10 +491,11 @@ impl Tunnel {
         }
     }
 
-    pub fn flowctl_quota_poll(&mut self, req_idx: u16, req_tag: u16) -> bool {
+    pub fn flowctl_quota_poll(&mut self, req_idx: u16, req_tag: u16) -> Result<bool, ()> {
         if !self.check_req_valid(req_idx, req_tag) {
             // just resume the task
-            return true;
+            info!("[Tunnel]{} flowctl_quota_poll valid req", self.tunnel_id);
+            return Err(());
         }
 
         let requests = &mut self.requests;
@@ -502,10 +503,10 @@ impl Tunnel {
         let req = &mut requests.elements[req_idx2];
         if req.quota < 1 {
             req.wait_task = Some(futures::task::current());
-            return false;
+            return Ok(false);
         }
 
-        true
+        Ok(true)
     }
 
     pub fn on_request_recv_finished(&mut self, req_idx: u16, req_tag: u16) {
