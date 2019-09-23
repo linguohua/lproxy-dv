@@ -208,7 +208,7 @@ impl Tunnel {
 
     pub fn on_dns_reply(&self, data: Vec<u8>, len: usize, port: u16, ip32: u32) {
         let hsize = 6; // port + ipv4
-        let buf = &mut vec![0; hsize + len];
+        let mut buf = vec![0; hsize + len];
         let header = &mut buf[0..hsize];
         let offset = &mut 0;
         header.write_with::<u16>(offset, port, LE).unwrap();
@@ -217,7 +217,7 @@ impl Tunnel {
         let msg_body = &mut buf[hsize..];
         msg_body.copy_from_slice(&data[..len]);
 
-        let wmsg = Message::from(&buf[..]);
+        let wmsg = Message::from(buf);
         let tx = &self.tx;
         let result = tx.unbounded_send((std::u16::MAX, 0, wmsg));
         match result {
@@ -367,14 +367,14 @@ impl Tunnel {
 
             // send request to agent
             let hsize = THEADER_SIZE;
-            let buf = &mut vec![0; hsize];
+            let mut buf = vec![0; hsize];
 
             let th = THeader::new(Cmd::ReqServerClosed, req_idx, req_tag);
             let msg_header = &mut buf[0..hsize];
             th.write_to(msg_header);
 
             // websocket message
-            let wmsg = Message::from(&buf[..]);
+            let wmsg = Message::from(buf);
 
             // send to peer, should always succeed
             if let Err(e) = self.tx.unbounded_send((std::u16::MAX, 0, wmsg)) {
@@ -406,7 +406,7 @@ impl Tunnel {
         }
 
         let hsize = THEADER_SIZE;
-        let buf = &mut vec![0; hsize + size];
+        let mut buf = vec![0; hsize + size];
 
         let th = THeader::new_data_header(req_idx, req_tag);
         let msg_header = &mut buf[0..hsize];
@@ -414,7 +414,7 @@ impl Tunnel {
         let msg_body = &mut buf[hsize..];
         msg_body.copy_from_slice(message.as_ref());
 
-        let wmsg = Message::from(&buf[..]);
+        let wmsg = Message::from(buf);
         let result = self.tx.unbounded_send((req_idx, req_tag, wmsg));
         match result {
             Err(e) => {
@@ -483,13 +483,13 @@ impl Tunnel {
         }
 
         let hsize = THEADER_SIZE;
-        let buf = &mut vec![0; hsize];
+        let mut buf = vec![0; hsize];
 
         let th = THeader::new(Cmd::ReqServerFinished, req_idx, req_tag);
         let msg_header = &mut buf[0..hsize];
         th.write_to(msg_header);
 
-        let wmsg = Message::from(&buf[..]);
+        let wmsg = Message::from(buf);
         let result = self.tx.unbounded_send((std::u16::MAX, 0, wmsg));
 
         match result {
