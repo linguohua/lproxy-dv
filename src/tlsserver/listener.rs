@@ -1,4 +1,4 @@
-use crate::config::{TunCfg, DNS_PATH, TUN_PATH};
+use crate::config::{TunCfg, DNS_PATH, TUN_PATH, WEBSOCKET_QUEUE_SIZE};
 use crate::service::SubServiceCtlCmd;
 use crate::service::TunMgrStub;
 use failure::Error;
@@ -16,9 +16,10 @@ use tokio::runtime::current_thread::{self};
 use tokio_tcp::TcpListener;
 use tokio_tcp::TcpStream;
 use tokio_tls::TlsStream;
-use tokio_tungstenite::accept_hdr_async;
+use tokio_tungstenite::accept_hdr_async_with_config;
 use tokio_tungstenite::WebSocketStream;
 use tungstenite::handshake::server::Request;
+use tungstenite::protocol::WebSocketConfig;
 
 type WSStream = WebSocketStream<TlsStream<TcpStream>>;
 type LongLive = Rc<RefCell<Listener>>;
@@ -105,7 +106,10 @@ impl Listener {
                             Ok(None)
                         };
 
-                        let fut = accept_hdr_async(tls, cb)
+                        let mut wscfg = WebSocketConfig::default();
+                        wscfg.max_send_queue = Some(WEBSOCKET_QUEUE_SIZE);
+                        let wscfg = Some(wscfg);
+                        let fut = accept_hdr_async_with_config(tls, cb, wscfg)
                             .and_then(move |ws_stream| {
                                 let p = path.borrow();
                                 println!("[Server]path:{}", p);

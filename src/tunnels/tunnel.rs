@@ -494,7 +494,7 @@ impl Tunnel {
     pub fn flowctl_quota_poll(&mut self, req_idx: u16, req_tag: u16) -> Result<bool, ()> {
         if !self.check_req_valid(req_idx, req_tag) {
             // just resume the task
-            info!("[Tunnel]{} flowctl_quota_poll valid req", self.tunnel_id);
+            info!("[Tunnel]{} flowctl_quota_poll invalid req", self.tunnel_id);
             return Err(());
         }
 
