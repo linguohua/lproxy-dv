@@ -16,10 +16,13 @@ pub struct TunCfg {
 impl TunCfg {
     pub fn new() -> TunCfg {
         TunCfg {
-            pkcs12: "/home/abc/identity.pfx".to_string(),
+            //pkcs12: "/home/abc/identity.pfx".to_string(),
+            pkcs12: "/etc/v2ray/identity.pfx".to_string(),
             pkcs12_password: "123456".to_string(),
-            listen_addr: "127.0.0.1:12345".to_string(),
-            dns_server_addr: "223.5.5.5:53".to_string(),
+            //listen_addr: "127.0.0.1:12345".to_string(),
+            //dns_server_addr: "223.5.5.5:53".to_string(),
+            listen_addr: "0.0.0.0:8080".to_string(),
+            dns_server_addr: "1.1.1.1:53".to_string(),
         }
     }
 }

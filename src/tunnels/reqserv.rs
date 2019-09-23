@@ -81,7 +81,7 @@ fn proxy_request_internal(
     socket.set_linger(None).unwrap();
     let kduration = Duration::new(3, 0);
     socket.set_keepalive(Some(kduration)).unwrap();
-    socket.set_nodelay(true).unwrap();
+    // socket.set_nodelay(true).unwrap();
 
     let rawfd = socket.as_raw_fd();
     let framed = BytesCodec::new().framed(socket);

@@ -40,6 +40,9 @@ pub struct Tunnel {
     pub requests: Reqq,
 
     pub dns_server_addr: Option<SocketAddr>,
+
+    recv_message_count: usize,
+    recv_message_size: usize,
 }
 
 impl Tunnel {
@@ -74,6 +77,8 @@ impl Tunnel {
 
             requests: Reqq::new(cap),
             dns_server_addr: dns_server_addr,
+            recv_message_count: 0,
+            recv_message_size: 0,
         }))
     }
 
@@ -391,6 +396,15 @@ impl Tunnel {
         }
 
         let size = message.len();
+        self.recv_message_count += 1;
+        self.recv_message_size += size;
+        if self.recv_message_count % 200 == 0 {
+            info!(
+                "[Tunnel]average bytesmut length:{}",
+                self.recv_message_size / self.recv_message_count
+            );
+        }
+
         let hsize = THEADER_SIZE;
         let buf = &mut vec![0; hsize + size];
 

@@ -1,4 +1,4 @@
-use crate::config::{TunCfg, TUN_PATH, DNS_PATH};
+use crate::config::{TunCfg, DNS_PATH, TUN_PATH};
 use crate::service::SubServiceCtlCmd;
 use crate::service::TunMgrStub;
 use failure::Error;
@@ -89,6 +89,8 @@ impl Listener {
             .for_each(move |tcp| {
                 let rawfd = tcp.as_raw_fd();
                 let ll = ll.clone();
+                // tcp.set_nodelay(true).unwrap();
+
                 // Accept the TLS connection.
                 let tls_accept = tls_acceptor
                     .accept(tcp)
