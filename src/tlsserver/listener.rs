@@ -1,4 +1,4 @@
-use crate::config::TunCfg;
+use crate::config::{TunCfg, TUN_PATH, DNS_PATH};
 use crate::service::SubServiceCtlCmd;
 use crate::service::TunMgrStub;
 use failure::Error;
@@ -110,9 +110,9 @@ impl Listener {
 
                                 let s = ll.clone();
                                 let mut s = s.borrow_mut();
-                                if p.contains("/dns") {
+                                if p.contains(DNS_PATH) {
                                     s.on_accept_dns_websocket(rawfd, ws_stream, (*p).to_string());
-                                } else if p.contains("/tun") {
+                                } else if p.contains(TUN_PATH) {
                                     s.on_accept_proxy_websocket(rawfd, ws_stream, (*p).to_string());
                                 }
 
