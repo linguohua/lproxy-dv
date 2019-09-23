@@ -96,7 +96,10 @@ impl Tunnel {
         }
 
         if !msg.is_binary() {
-            info!("[Tunnel]tunnel should only handle binary msg!");
+            info!(
+                "[Tunnel]{} tunnel should only handle binary msg!",
+                self.tunnel_id
+            );
             return;
         }
 
@@ -129,7 +132,10 @@ impl Tunnel {
                 let tx = self.get_request_tx(req_idx, req_tag);
                 match tx {
                     None => {
-                        info!("[Tunnel]no request found for: {}:{}", req_idx, req_tag);
+                        info!(
+                            "[Tunnel]{}no request found for: {}:{}",
+                            self.tunnel_id, req_idx, req_tag
+                        );
                         return;
                     }
                     Some(tx) => {
@@ -137,7 +143,10 @@ impl Tunnel {
                         let result = tx.unbounded_send(b);
                         match result {
                             Err(e) => {
-                                info!("[Tunnel]tunnel msg send to request failed:{}", e);
+                                info!(
+                                    "[Tunnel]{} tunnel msg send to request failed:{}",
+                                    self.tunnel_id, e
+                                );
                                 return;
                             }
                             _ => {}
@@ -150,8 +159,8 @@ impl Tunnel {
                 let req_idx = th.req_idx;
                 let req_tag = th.req_tag;
                 info!(
-                    "[Tunnel] ReqClientFinished, idx:{}, tag:{}",
-                    req_idx, req_tag
+                    "[Tunnel] {} ReqClientFinished, idx:{}, tag:{}",
+                    self.tunnel_id, req_idx, req_tag
                 );
 
                 self.free_request_tx(req_idx, req_tag);
@@ -160,7 +169,10 @@ impl Tunnel {
                 // client closed
                 let req_idx = th.req_idx;
                 let req_tag = th.req_tag;
-                info!("[Tunnel] ReqClientClosed, idx:{}, tag:{}", req_idx, req_tag);
+                info!(
+                    "[Tunnel]{} ReqClientClosed, idx:{}, tag:{}",
+                    self.tunnel_id, req_idx, req_tag
+                );
 
                 let reqs = &mut self.requests;
                 let r = reqs.free(req_idx, req_tag);
@@ -201,7 +213,10 @@ impl Tunnel {
                 }
             }
             _ => {
-                error!("[Tunnel]unsupport cmd:{:?}, discard msg", cmd);
+                error!(
+                    "[Tunnel]{} unsupport cmd:{:?}, discard msg",
+                    self.tunnel_id, cmd
+                );
             }
         }
     }
@@ -223,8 +238,8 @@ impl Tunnel {
         match result {
             Err(e) => {
                 error!(
-                    "[Tunnel]on_dns_reply tun send error:{}, tun_tx maybe closed",
-                    e
+                    "[Tunnel]{} on_dns_reply tun send error:{}, tun_tx maybe closed",
+                    self.tunnel_id, e
                 );
             }
             _ => {
@@ -237,7 +252,7 @@ impl Tunnel {
         let bs = msg.into_data();
         let len = bs.len();
         if len != 8 {
-            error!("[Tunnel]pong data length({}) != 8", len);
+            error!("[Tunnel]{} pong data length({}) != 8", self.tunnel_id, len);
             return;
         }
 
@@ -248,7 +263,11 @@ impl Tunnel {
         let timestamp = bs.read_with::<u64>(offset, LE).unwrap();
 
         let in_ms = self.get_elapsed_milliseconds();
-        assert!(in_ms >= timestamp, "[Tunnel]pong timestamp > now!");
+        assert!(
+            in_ms >= timestamp,
+            "[Tunnel]{} pong timestamp > now!",
+            self.tunnel_id
+        );
 
         let rtt = in_ms - timestamp;
         let rtt = rtt as i64;
@@ -261,7 +280,8 @@ impl Tunnel {
         reqs.clear_all();
 
         info!(
-            "[Tunnel]tunnel live duration {} minutes",
+            "[Tunnel]{} tunnel live duration {} minutes",
+            self.tunnel_id,
             self.time.elapsed().as_secs() / 60
         );
     }
@@ -342,15 +362,18 @@ impl Tunnel {
         let req = &mut requests.elements[req_idx];
         if req.tag == req_tag && req.request_tx.is_some() {
             info!(
-                "[Tunnel]free_request_tx, req_idx:{}, req_tag:{}",
-                req_idx, req_tag
+                "[Tunnel]{} free_request_tx, req_idx:{}, req_tag:{}",
+                self.tunnel_id, req_idx, req_tag
             );
             req.request_tx = None;
         }
     }
 
     pub fn on_request_closed(&mut self, req_idx: u16, req_tag: u16) {
-        info!("[Tunnel]on_request_closed, req_idx:{}", req_idx);
+        info!(
+            "[Tunnel]{} on_request_closed, req_idx:{}",
+            self.tunnel_id, req_idx
+        );
 
         if !self.check_req_valid(req_idx, req_tag) {
             return;
@@ -360,8 +383,8 @@ impl Tunnel {
         let r = reqs.free(req_idx, req_tag);
         if r {
             info!(
-                "[Tunnel]on_request_closed, tun index:{}, sub req_count by 1",
-                req_idx
+                "[Tunnel]{} on_request_closed, tun index:{}, sub req_count by 1",
+                self.tunnel_id, req_idx
             );
             self.req_count -= 1;
 
@@ -378,13 +401,19 @@ impl Tunnel {
 
             // send to peer, should always succeed
             if let Err(e) = self.tx.unbounded_send((std::u16::MAX, 0, wmsg)) {
-                error!("[Tunnel]send_request_closed_to_server tx send failed:{}", e);
+                error!(
+                    "[Tunnel]{} send_request_closed_to_server tx send failed:{}",
+                    self.tunnel_id, e
+                );
             }
         }
     }
 
     pub fn on_request_connect_error(&mut self, req_idx: u16, req_tag: u16) {
-        info!("[Tunnel]on_request_connect_error, req_idx:{}", req_idx);
+        info!(
+            "[Tunnel]{} on_request_connect_error, req_idx:{}",
+            self.tunnel_id, req_idx
+        );
         self.on_request_closed(req_idx, req_tag);
     }
 
@@ -400,7 +429,8 @@ impl Tunnel {
         self.recv_message_size += size;
         if self.recv_message_count % 200 == 0 {
             info!(
-                "[Tunnel]average bytesmut length:{}",
+                "[Tunnel]{} average bytesmut length:{}",
+                self.tunnel_id,
                 self.recv_message_size / self.recv_message_count
             );
         }
@@ -418,7 +448,10 @@ impl Tunnel {
         let result = self.tx.unbounded_send((req_idx, req_tag, wmsg));
         match result {
             Err(e) => {
-                error!("[Tunnel]request tun send error:{}, tun_tx maybe closed", e);
+                error!(
+                    "[Tunnel]{} request tun send error:{}, tun_tx maybe closed",
+                    self.tunnel_id, e
+                );
                 return false;
             }
             _ => {
@@ -476,7 +509,10 @@ impl Tunnel {
     }
 
     pub fn on_request_recv_finished(&mut self, req_idx: u16, req_tag: u16) {
-        info!("[Tunnel]on_request_recv_finished:{}", req_idx);
+        info!(
+            "[Tunnel]{} on_request_recv_finished:{}",
+            self.tunnel_id, req_idx
+        );
 
         if !self.check_req_valid(req_idx, req_tag) {
             return;
@@ -495,8 +531,8 @@ impl Tunnel {
         match result {
             Err(e) => {
                 error!(
-                    "[Tunnel]on_request_recv_finished, tun send error:{}, tun_tx maybe closed",
-                    e
+                    "[Tunnel]{} on_request_recv_finished, tun send error:{}, tun_tx maybe closed",
+                    self.tunnel_id, e
                 );
             }
             _ => {}
@@ -527,7 +563,7 @@ impl Tunnel {
         let r = shutdown(self.rawfd, Shutdown::Both);
         match r {
             Err(e) => {
-                info!("[Tunnel]close_rawfd failed:{}", e);
+                info!("[Tunnel]{} close_rawfd failed:{}", self.tunnel_id, e);
             }
             _ => {}
         }
@@ -563,9 +599,13 @@ impl Tunnel {
         let r = self.tx.unbounded_send((std::u16::MAX, 0, wmsg));
         match r {
             Err(e) => {
-                error!("[Tunnel]tunnel send_ping error:{}", e);
+                error!("[Tunnel]{} tunnel send_ping error:{}", self.tunnel_id, e);
             }
             _ => {
+                info!(
+                    "[Tunnel]{} req count:{}, tranfor size:{}",
+                    self.tunnel_id, self.req_count, self.recv_message_size
+                );
                 self.ping_count += 1;
                 if ping_count > 0 {
                     // TODO: fix accurate RTT?

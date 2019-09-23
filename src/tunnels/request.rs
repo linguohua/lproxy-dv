@@ -3,8 +3,8 @@ use bytes::Bytes;
 use futures::sync::mpsc::UnboundedSender;
 use futures::task::Task;
 use std::fmt;
-use stream_cancel::Trigger;
 use std::os::unix::io::RawFd;
+use stream_cancel::Trigger;
 
 pub struct Request {
     pub index: u16,
@@ -15,7 +15,6 @@ pub struct Request {
 
     // pub ipv4_le: u32,
     // pub port_le: u16,
-
     pub quota: u32,
 
     pub wait_task: Option<Task>,
@@ -42,10 +41,6 @@ impl Request {
 
 impl fmt::Debug for Request {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Req {{ indx: {}, tag: {} }}",
-            self.index, self.tag,
-        )
+        write!(f, "Req {{ indx: {}, tag: {} }}", self.index, self.tag,)
     }
 }

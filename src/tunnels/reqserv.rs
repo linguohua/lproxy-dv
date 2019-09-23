@@ -101,7 +101,7 @@ fn proxy_request_internal(
     let tl2 = tl.clone();
     let tl3 = tl.clone();
     let tl4 = tl.clone();
-    let tl5 = tl.clone();;
+    let tl5 = tl.clone();
 
     // send future
     let send_fut = sink.send_all(rx.map_err(|e| {
