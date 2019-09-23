@@ -1,5 +1,5 @@
 use super::{Cmd, Reqq, THeader, THEADER_SIZE};
-use crate::config::{KEEP_ALIVE_INTERVAL, PER_TCP_QUOTA};
+use crate::config::{KEEP_ALIVE_INTERVAL, }; //PER_TCP_QUOTA
 use byte::*;
 use bytes::Bytes;
 use bytes::BytesMut;
@@ -24,7 +24,7 @@ pub enum HostInfo {
 
 pub struct Tunnel {
     pub tunnel_id: usize,
-    pub tx: UnboundedSender<(u16, u16, Message)>,
+    pub tx: UnboundedSender<Message>,
     rawfd: RawFd,
     is_for_dns: bool,
 
@@ -48,7 +48,7 @@ pub struct Tunnel {
 impl Tunnel {
     pub fn new(
         tid: usize,
-        tx: UnboundedSender<(u16, u16, Message)>,
+        tx: UnboundedSender<Message>,
         rawfd: RawFd,
         dns_server_addr: Option<SocketAddr>,
         cap: usize,
@@ -234,7 +234,7 @@ impl Tunnel {
 
         let wmsg = Message::from(buf);
         let tx = &self.tx;
-        let result = tx.unbounded_send((std::u16::MAX, 0, wmsg));
+        let result = tx.unbounded_send(wmsg);
         match result {
             Err(e) => {
                 error!(
@@ -400,7 +400,7 @@ impl Tunnel {
             let wmsg = Message::from(buf);
 
             // send to peer, should always succeed
-            if let Err(e) = self.tx.unbounded_send((std::u16::MAX, 0, wmsg)) {
+            if let Err(e) = self.tx.unbounded_send(wmsg) {
                 error!(
                     "[Tunnel]{} send_request_closed_to_server tx send failed:{}",
                     self.tunnel_id, e
@@ -445,7 +445,7 @@ impl Tunnel {
         msg_body.copy_from_slice(message.as_ref());
 
         let wmsg = Message::from(buf);
-        let result = self.tx.unbounded_send((req_idx, req_tag, wmsg));
+        let result = self.tx.unbounded_send(wmsg);
         match result {
             Err(e) => {
                 error!(
@@ -456,57 +456,57 @@ impl Tunnel {
             }
             _ => {
                 // info!("[Tunnel]unbounded_send request msg, req_idx:{}", req_idx);
-                self.flowctl_quota_decrease(req_idx);
+                // self.flowctl_quota_decrease(req_idx);
             }
         }
 
         true
     }
 
-    fn flowctl_quota_decrease(&mut self, req_idx: u16) {
-        let requests = &mut self.requests;
-        let req_idx2 = req_idx as usize;
-        let req = &mut requests.elements[req_idx2];
+    // fn flowctl_quota_decrease(&mut self, req_idx: u16) {
+    //     let requests = &mut self.requests;
+    //     let req_idx2 = req_idx as usize;
+    //     let req = &mut requests.elements[req_idx2];
 
-        if req.quota > 0 {
-            req.quota -= 1;
-        }
-    }
+    //     if req.quota > 0 {
+    //         req.quota -= 1;
+    //     }
+    // }
 
-    pub fn flowctl_quota_increase(&mut self, req_idx: u16, req_tag: u16) {
-        // check req valid
-        if !self.check_req_valid(req_idx, req_tag) {
-            return;
-        }
+    // pub fn flowctl_quota_increase(&mut self, req_idx: u16, req_tag: u16) {
+    //     // check req valid
+    //     if !self.check_req_valid(req_idx, req_tag) {
+    //         return;
+    //     }
 
-        let requests = &mut self.requests;
-        let req_idx2 = req_idx as usize;
-        let req = &mut requests.elements[req_idx2];
+    //     let requests = &mut self.requests;
+    //     let req_idx2 = req_idx as usize;
+    //     let req = &mut requests.elements[req_idx2];
 
-        req.quota += 1;
-        const HALF_QUOTA: u32 = PER_TCP_QUOTA / 2;
-        if req.quota >= HALF_QUOTA && req.wait_task.is_some() {
-            let wait_task = req.wait_task.take().unwrap();
-            wait_task.notify();
-        }
-    }
+    //     req.quota += 1;
+    //     const HALF_QUOTA: u32 = PER_TCP_QUOTA / 2;
+    //     if req.quota >= HALF_QUOTA && req.wait_task.is_some() {
+    //         let wait_task = req.wait_task.take().unwrap();
+    //         wait_task.notify();
+    //     }
+    // }
 
-    pub fn flowctl_quota_poll(&mut self, req_idx: u16, req_tag: u16) -> bool {
-        if !self.check_req_valid(req_idx, req_tag) {
-            // just resume the task
-            return true;
-        }
+    // pub fn flowctl_quota_poll(&mut self, req_idx: u16, req_tag: u16) -> bool {
+    //     if !self.check_req_valid(req_idx, req_tag) {
+    //         // just resume the task
+    //         return true;
+    //     }
 
-        let requests = &mut self.requests;
-        let req_idx2 = req_idx as usize;
-        let req = &mut requests.elements[req_idx2];
-        if req.quota < 1 {
-            req.wait_task = Some(futures::task::current());
-            return false;
-        }
+    //     let requests = &mut self.requests;
+    //     let req_idx2 = req_idx as usize;
+    //     let req = &mut requests.elements[req_idx2];
+    //     if req.quota < 1 {
+    //         req.wait_task = Some(futures::task::current());
+    //         return false;
+    //     }
 
-        true
-    }
+    //     true
+    // }
 
     pub fn on_request_recv_finished(&mut self, req_idx: u16, req_tag: u16) {
         info!(
@@ -526,7 +526,7 @@ impl Tunnel {
         th.write_to(msg_header);
 
         let wmsg = Message::from(buf);
-        let result = self.tx.unbounded_send((std::u16::MAX, 0, wmsg));
+        let result = self.tx.unbounded_send(wmsg);
 
         match result {
             Err(e) => {
@@ -596,7 +596,7 @@ impl Tunnel {
         bs.write_with::<u64>(offset, timestamp, LE).unwrap();
 
         let wmsg = Message::Ping(bs1);
-        let r = self.tx.unbounded_send((std::u16::MAX, 0, wmsg));
+        let r = self.tx.unbounded_send(wmsg);
         match r {
             Err(e) => {
                 error!("[Tunnel]{} tunnel send_ping error:{}", self.tunnel_id, e);

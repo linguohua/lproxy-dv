@@ -101,7 +101,7 @@ fn proxy_request_internal(
     let tl2 = tl.clone();
     let tl3 = tl.clone();
     let tl4 = tl.clone();
-    let tl5 = tl.clone();
+    // let tl5 = tl.clone();
 
     // send future
     let send_fut = sink.send_all(rx.map_err(|e| {
@@ -122,14 +122,16 @@ fn proxy_request_internal(
     let receive_fut = stream.take_until(tripwire).for_each(move |message| {
         let mut tun_b = tl2.borrow_mut();
         // post to manager
-        let prev_error;
+        // let prev_error;
         if tun_b.on_request_msg(message, req_idx, req_tag) {
-            prev_error = false;
+            // prev_error = false;
+            Ok(())
         } else {
-            prev_error = true;
+            // prev_error = true;
+            Err(std::io::Error::from(std::io::ErrorKind::NotConnected))
         }
 
-        FlowCtl::new(tl5.clone(), req_idx, req_tag, prev_error)
+        // FlowCtl::new(tl5.clone(), req_idx, req_tag, prev_error)
     });
 
     let receive_fut = receive_fut.and_then(move |_| {
@@ -156,43 +158,43 @@ fn proxy_request_internal(
     current_thread::spawn(receive_fut);
 }
 
-struct FlowCtl {
-    tl: LongLiveTun,
-    req_idx: u16,
-    req_tag: u16,
-    prev_error: bool,
-}
+// struct FlowCtl {
+//     tl: LongLiveTun,
+//     req_idx: u16,
+//     req_tag: u16,
+//     prev_error: bool,
+// }
 
-impl FlowCtl {
-    pub fn new(tl: LongLiveTun, req_idx: u16, req_tag: u16, prev_error: bool) -> FlowCtl {
-        FlowCtl {
-            tl,
-            req_idx,
-            req_tag,
-            prev_error,
-        }
-    }
-}
+// impl FlowCtl {
+//     pub fn new(tl: LongLiveTun, req_idx: u16, req_tag: u16, prev_error: bool) -> FlowCtl {
+//         FlowCtl {
+//             tl,
+//             req_idx,
+//             req_tag,
+//             prev_error,
+//         }
+//     }
+// }
 
-impl Future for FlowCtl {
-    type Item = ();
-    type Error = std::io::Error;
+// impl Future for FlowCtl {
+//     type Item = ();
+//     type Error = std::io::Error;
 
-    fn poll(&mut self) -> Poll<Self::Item, std::io::Error> {
-        if self.prev_error {
-            return Err(std::io::Error::from(std::io::ErrorKind::NotConnected));
-        }
+//     fn poll(&mut self) -> Poll<Self::Item, std::io::Error> {
+//         if self.prev_error {
+//             return Err(std::io::Error::from(std::io::ErrorKind::NotConnected));
+//         }
 
-        let quota_ready = self
-            .tl
-            .borrow_mut()
-            .flowctl_quota_poll(self.req_idx, self.req_tag);
-        if quota_ready {
-            //info!("[Proxy] quota ready! {}:{}", self.req_idx, self.req_tag);
-            return Ok(Async::Ready(()));
-        }
+//         let quota_ready = self
+//             .tl
+//             .borrow_mut()
+//             .flowctl_quota_poll(self.req_idx, self.req_tag);
+//         if quota_ready {
+//             //info!("[Proxy] quota ready! {}:{}", self.req_idx, self.req_tag);
+//             return Ok(Async::Ready(()));
+//         }
 
-        //info!("[Proxy] quota not ready! {}:{}", self.req_idx, self.req_tag);
-        Ok(Async::NotReady)
-    }
-}
+//         //info!("[Proxy] quota not ready! {}:{}", self.req_idx, self.req_tag);
+//         Ok(Async::NotReady)
+//     }
+// }

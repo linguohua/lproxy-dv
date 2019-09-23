@@ -1,5 +1,5 @@
 use super::Request;
-use crate::config::PER_TCP_QUOTA;
+// use crate::config::PER_TCP_QUOTA;
 use log::error;
 use nix::sys::socket::{shutdown, Shutdown};
 
@@ -32,7 +32,7 @@ impl Reqq {
         // req.port_le = port;
         req.request_tx = None;
         req.trigger = None;
-        req.quota = PER_TCP_QUOTA;
+        // req.quota = PER_TCP_QUOTA;
         req.is_inused = true;
     }
 
@@ -70,10 +70,10 @@ impl Reqq {
         req.trigger = None;
         req.is_inused = false;
 
-        if req.wait_task.is_some() {
-            let wait_task = req.wait_task.take().unwrap();
-            wait_task.notify();
-        }
+        // if req.wait_task.is_some() {
+        //     let wait_task = req.wait_task.take().unwrap();
+        //     wait_task.notify();
+        // }
 
         if req.rawfd.is_some() {
             let rawfd = req.rawfd.take().unwrap();

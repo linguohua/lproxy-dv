@@ -1,7 +1,7 @@
-use crate::config::PER_TCP_QUOTA;
+// use crate::config::PER_TCP_QUOTA;
 use bytes::Bytes;
 use futures::sync::mpsc::UnboundedSender;
-use futures::task::Task;
+// use futures::task::Task;
 use std::fmt;
 use std::os::unix::io::RawFd;
 use stream_cancel::Trigger;
@@ -15,9 +15,9 @@ pub struct Request {
 
     // pub ipv4_le: u32,
     // pub port_le: u16,
-    pub quota: u32,
+    // pub quota: u32,
 
-    pub wait_task: Option<Task>,
+    // pub wait_task: Option<Task>,
 
     pub rawfd: Option<RawFd>,
 }
@@ -32,8 +32,8 @@ impl Request {
             // ipv4_le: 0,
             // port_le: 0,
             is_inused: false,
-            quota: PER_TCP_QUOTA,
-            wait_task: None,
+            // quota: PER_TCP_QUOTA,
+            // wait_task: None,
             rawfd: None,
         }
     }
