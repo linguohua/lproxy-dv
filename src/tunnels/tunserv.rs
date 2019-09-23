@@ -1,11 +1,9 @@
 use super::LongLiveTM;
 use super::Tunnel;
 use crate::tlsserver::WSStreamInfo;
-use futures::sink::Sink;
 use futures::{Future, Stream};
-use log::{debug, error, info};
+use log::{debug, info};
 use tokio;
-use tokio::prelude::*;
 use tokio::runtime::current_thread;
 
 pub fn serve_websocket(wsinfo: WSStreamInfo, s: LongLiveTM) {
@@ -47,25 +45,21 @@ pub fn serve_websocket(wsinfo: WSStreamInfo, s: LongLiveTM) {
         Ok(())
     });
 
-    // let send_fut = rx.forward(sink);
-    let send_fut = rx.fold(sink, move |mut sink, (req_idx, req_tag, item)| {
-        // flowctl_quota_increase
-        if req_idx != std::u16::MAX {
-            t3.borrow_mut().flowctl_quota_increase(req_idx, req_tag);
-        }
-
-        let ss = sink.start_send(item);
-        let start_send_error;
-        if let Err(e) = ss {
-            error!("[tunserv] start_send error:{}", e);
-            start_send_error = Some(e);
-        } else {
-            start_send_error = None;
-        }
-
-        // wait sink send completed
-        WebsocketSinkCtl::new(sink, start_send_error).map_err(|_| ())
+    let rx = rx.map_err(|_| {
+        tungstenite::error::Error::Io(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "[tunbuilder] rx-shit",
+        ))
     });
+
+    let send_fut = rx
+        .map(move |(req_idx, req_tag, msg)| {
+            if req_idx != std::u16::MAX {
+                t3.borrow_mut().flowctl_quota_increase(req_idx, req_tag);
+            }
+            msg
+        })
+        .forward(sink);
 
     // Wait for either of futures to complete.
     let receive_fut = receive_fut
@@ -80,50 +74,6 @@ pub fn serve_websocket(wsinfo: WSStreamInfo, s: LongLiveTM) {
         });
 
     current_thread::spawn(receive_fut);
-}
-
-struct WebsocketSinkCtl<T>
-where
-    T: Sink,
-{
-    sink: Option<T>,
-    sink_error: Option<T::SinkError>,
-}
-
-impl<T> WebsocketSinkCtl<T>
-where
-    T: Sink,
-{
-    pub fn new(sink: T, sink_error: Option<T::SinkError>) -> Self {
-        WebsocketSinkCtl {
-            sink: Some(sink),
-            sink_error,
-            // start_sink,
-        }
-    }
-}
-
-impl<T> Future for WebsocketSinkCtl<T>
-where
-    T: Sink,
-{
-    type Item = T;
-    type Error = T::SinkError;
-
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        if self.sink_error.is_some() {
-            return Err(self.sink_error.take().unwrap());
-        }
-
-        let result = self.sink.as_mut().unwrap().poll_complete();
-        match result {
-            Ok(Async::Ready(_)) => return Ok(Async::Ready(self.sink.take().unwrap())),
-            Ok(Async::NotReady) => return Ok(Async::NotReady),
-            Err(e) => {
-                return Err(e);
-            }
-        }
-    }
 }
 
 fn find_cap_from_query_string(path: &str) -> usize {
