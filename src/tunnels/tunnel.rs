@@ -4,6 +4,7 @@ use byte::*;
 use bytes::Bytes;
 use bytes::BytesMut;
 use futures::sync::mpsc::UnboundedSender;
+use futures::task::Task;
 use log::{error, info};
 use nix::sys::socket::{shutdown, Shutdown};
 use std::cell::RefCell;
@@ -45,6 +46,9 @@ pub struct Tunnel {
     recv_message_size: usize,
 
     pub has_flowctl: bool,
+    quota_of_interval: usize,
+    quota_per_second_in_kbytes: usize,
+    pub wait_task: Option<Task>,
 }
 
 impl Tunnel {
@@ -54,14 +58,28 @@ impl Tunnel {
         rawfd: RawFd,
         dns_server_addr: Option<SocketAddr>,
         cap: usize,
+        quota_per_second_in_kbytes: usize,
     ) -> LongLiveTun {
         info!(
-            "[Tunnel]new Tunnel, idx:{}, cap:{}, dns:{:?}",
-            tid, cap, dns_server_addr
+            "[Tunnel]new Tunnel, idx:{}, cap:{}, dns:{:?}, flowctl enable:{}",
+            tid,
+            cap,
+            dns_server_addr,
+            quota_per_second_in_kbytes > 0
         );
         let size = 5;
         let rtt_queue = vec![0; size];
         let is_for_dns = dns_server_addr.is_some();
+
+        let has_flowctl;
+        let quota_of_interval;
+        if quota_per_second_in_kbytes != 0 {
+            has_flowctl = true;
+            quota_of_interval = quota_per_second_in_kbytes * (KEEP_ALIVE_INTERVAL as usize);
+        } else {
+            has_flowctl = false;
+            quota_of_interval = 0;
+        }
 
         Rc::new(RefCell::new(Tunnel {
             tunnel_id: tid,
@@ -82,7 +100,10 @@ impl Tunnel {
             recv_message_count: 0,
             recv_message_size: 0,
 
-            has_flowctl: false,
+            has_flowctl,
+            quota_of_interval,
+            quota_per_second_in_kbytes,
+            wait_task: None,
         }))
     }
 
@@ -288,6 +309,11 @@ impl Tunnel {
             self.tunnel_id,
             self.time.elapsed().as_secs() / 60
         );
+
+        if self.wait_task.is_some() {
+            let wait_task = self.wait_task.take().unwrap();
+            wait_task.notify();
+        }
     }
 
     fn get_request_tx(&self, req_idx: u16, req_tag: u16) -> Option<UnboundedSender<Bytes>> {
@@ -513,7 +539,18 @@ impl Tunnel {
         Ok(true)
     }
 
-    pub fn poll_tunnel_quota_with(&mut self, _bytes_cosume: usize) -> Result<bool, ()> {
+    pub fn poll_tunnel_quota_with(&mut self, bytes_cosume: usize) -> Result<bool, ()> {
+        if self.quota_of_interval < bytes_cosume {
+            self.quota_of_interval = 0;
+        } else {
+            self.quota_of_interval -= bytes_cosume;
+        }
+
+        if self.quota_of_interval == 0 {
+            self.wait_task = Some(futures::task::current());
+            return Ok(false);
+        }
+
         Ok(true)
     }
 
@@ -590,6 +627,14 @@ impl Tunnel {
     fn get_elapsed_milliseconds(&self) -> u64 {
         let in_ms = self.time.elapsed().as_millis();
         in_ms as u64
+    }
+
+    pub fn reset_quota_interval(&mut self) {
+        self.quota_of_interval = self.quota_per_second_in_kbytes * (KEEP_ALIVE_INTERVAL as usize);
+        if self.wait_task.is_some() {
+            let wait_task = self.wait_task.take().unwrap();
+            wait_task.notify();
+        }
     }
 
     pub fn send_ping(&mut self) -> bool {

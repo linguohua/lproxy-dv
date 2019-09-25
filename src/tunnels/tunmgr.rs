@@ -93,6 +93,7 @@ impl TunMgr {
         let tunnels = &self.tunnels_map;
         for (_, t) in tunnels.iter() {
             let mut tun = t.borrow_mut();
+            tun.reset_quota_interval();
             if !tun.send_ping() {
                 tun.close_rawfd();
             }

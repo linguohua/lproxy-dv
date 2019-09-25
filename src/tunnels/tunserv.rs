@@ -10,7 +10,16 @@ use tokio::runtime::current_thread;
 pub fn serve_websocket(wsinfo: WSStreamInfo, s: LongLiveTM) {
     let mut wsinfo = wsinfo;
     let ws_stream = wsinfo.ws.take().unwrap();
-    let tunnel_cap = find_cap_from_query_string(&wsinfo.path);
+    let mut tunnel_cap = find_usize_from_query_string(&wsinfo.path, "cap=");
+    if tunnel_cap > 1024 {
+        info!(
+            "[tunserv] tunnel cap from query string is too large:{}, reset to 0",
+            tunnel_cap
+        );
+        tunnel_cap = 0;
+    }
+
+    let quota_per_second_in_kbytes = find_usize_from_query_string(&wsinfo.path, "limit=");
 
     // Create a channel for our stream, which other sockets will use to
     // send us messages. Then register our address with the stream to send
@@ -25,6 +34,7 @@ pub fn serve_websocket(wsinfo: WSStreamInfo, s: LongLiveTM) {
         rawfd,
         rf.dns_server_addr,
         tunnel_cap,
+        quota_per_second_in_kbytes,
     );
     if let Err(_) = rf.on_tunnel_created(t.clone()) {
         // DROP all
@@ -79,12 +89,12 @@ pub fn serve_websocket(wsinfo: WSStreamInfo, s: LongLiveTM) {
     current_thread::spawn(receive_fut);
 }
 
-fn find_cap_from_query_string(path: &str) -> usize {
+fn find_usize_from_query_string(path: &str, key: &str) -> usize {
     if let Some(pos1) = path.find("?") {
         let substr = &path[pos1 + 1..];
-        if let Some(pos2) = substr.find("cap=") {
+        if let Some(pos2) = substr.find(key) {
             let param_str: &str;
-            let substr = &substr[pos2 + 4..];
+            let substr = &substr[(pos2 + key.len())..];
             if let Some(pos3) = substr.find("&") {
                 param_str = &substr[..pos3];
             } else {
@@ -92,12 +102,7 @@ fn find_cap_from_query_string(path: &str) -> usize {
             }
 
             if let Ok(t) = param_str.parse::<usize>() {
-                if t > 1024 {
-                    info!("[tunserv] tunnel cap from query string is too large:{}", t);
-                    return 0;
-                } else {
-                    return t;
-                }
+                return t;
             }
         }
     }
