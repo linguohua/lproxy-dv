@@ -43,6 +43,8 @@ pub struct Tunnel {
 
     recv_message_count: usize,
     recv_message_size: usize,
+
+    pub has_flowctl: bool,
 }
 
 impl Tunnel {
@@ -79,6 +81,8 @@ impl Tunnel {
             dns_server_addr: dns_server_addr,
             recv_message_count: 0,
             recv_message_size: 0,
+
+            has_flowctl: false,
         }))
     }
 
@@ -491,7 +495,7 @@ impl Tunnel {
         }
     }
 
-    pub fn flowctl_quota_poll(&mut self, req_idx: u16, req_tag: u16) -> Result<bool, ()> {
+    pub fn flowctl_request_quota_poll(&mut self, req_idx: u16, req_tag: u16) -> Result<bool, ()> {
         if !self.check_req_valid(req_idx, req_tag) {
             // just resume the task
             info!("[Tunnel]{} flowctl_quota_poll invalid req", self.tunnel_id);
@@ -506,6 +510,10 @@ impl Tunnel {
             return Ok(false);
         }
 
+        Ok(true)
+    }
+
+    pub fn poll_tunnel_quota_with(&mut self, _bytes_cosume: usize) -> Result<bool, ()> {
         Ok(true)
     }
 

@@ -1,3 +1,4 @@
+use super::new_forward_ex;
 use super::LongLiveTM;
 use super::Tunnel;
 use crate::tlsserver::WSStreamInfo;
@@ -32,6 +33,8 @@ pub fn serve_websocket(wsinfo: WSStreamInfo, s: LongLiveTM) {
 
     let t2 = t.clone();
     let t3 = t.clone();
+    let t4 = t.clone();
+
     // `sink` is the stream of messages going out.
     // `stream` is the stream of incoming messages.
     let (sink, stream) = ws_stream.split();
@@ -52,14 +55,14 @@ pub fn serve_websocket(wsinfo: WSStreamInfo, s: LongLiveTM) {
         ))
     });
 
-    let send_fut = rx
-        .map(move |(req_idx, req_tag, msg)| {
-            if req_idx != std::u16::MAX {
-                t3.borrow_mut().flowctl_quota_increase(req_idx, req_tag);
-            }
-            msg
-        })
-        .forward(sink);
+    let send_fut = rx.map(move |(req_idx, req_tag, msg)| {
+        if req_idx != std::u16::MAX {
+            t3.borrow_mut().flowctl_quota_increase(req_idx, req_tag);
+        }
+        msg
+    });
+
+    let send_fut = new_forward_ex(send_fut, sink, t4);
 
     // Wait for either of futures to complete.
     let receive_fut = receive_fut

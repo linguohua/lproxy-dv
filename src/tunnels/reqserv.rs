@@ -186,7 +186,7 @@ impl Future for FlowCtl {
         let quota_ready = self
             .tl
             .borrow_mut()
-            .flowctl_quota_poll(self.req_idx, self.req_tag);
+            .flowctl_request_quota_poll(self.req_idx, self.req_tag);
         match quota_ready {
             Err(_) => Err(std::io::Error::from(std::io::ErrorKind::NotConnected)),
             Ok(t) => {

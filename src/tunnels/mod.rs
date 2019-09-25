@@ -14,3 +14,5 @@ mod request;
 pub use request::*;
 mod dnsserv;
 pub use dnsserv::*;
+mod forward_ex;
+pub use forward_ex::*;
