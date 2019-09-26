@@ -134,9 +134,9 @@ impl TunMgr {
                 ping_interval += 1;
                 if ping_interval % 3 == 0 {
                     rf.keepalive();
-                } else {
-                    rf.quota_reset();
                 }
+
+                rf.quota_reset();
 
                 Ok(())
             })
