@@ -93,7 +93,6 @@ impl TunMgr {
         let tunnels = &self.tunnels_map;
         for (_, t) in tunnels.iter() {
             let mut tun = t.borrow_mut();
-            tun.reset_quota_interval();
             if !tun.send_ping() {
                 tun.close_rawfd();
             }
@@ -110,12 +109,21 @@ impl TunMgr {
         self.send_pings();
     }
 
+    fn quota_reset(&mut self) {
+        let tunnels = &self.tunnels_map;
+        for (_, t) in tunnels.iter() {
+            let mut tun = t.borrow_mut();
+            tun.reset_quota_interval();
+        }
+    }
+
     fn start_keepalive_timer(&mut self, s2: LongLive) {
         info!("[TunMgr]start_keepalive_timer");
         let (trigger, tripwire) = Tripwire::new();
         self.keepalive_trigger = Some(trigger);
 
-        // tokio timer, every 3 seconds
+        let mut ping_interval = 0;
+        // tokio timer, every few seconds
         let task = Interval::new(Instant::now(), Duration::from_millis(KEEP_ALIVE_INTERVAL))
             .skip(1)
             .take_until(tripwire)
@@ -123,7 +131,12 @@ impl TunMgr {
                 debug!("[TunMgr]keepalive timer fire; instant={:?}", instant);
 
                 let mut rf = s2.borrow_mut();
-                rf.keepalive();
+                ping_interval += 1;
+                if ping_interval % 3 == 0 {
+                    rf.keepalive();
+                } else {
+                    rf.quota_reset();
+                }
 
                 Ok(())
             })
