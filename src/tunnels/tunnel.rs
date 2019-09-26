@@ -61,11 +61,12 @@ impl Tunnel {
         quota_per_second_in_kbytes: usize,
     ) -> LongLiveTun {
         info!(
-            "[Tunnel]new Tunnel, idx:{}, cap:{}, dns:{:?}, flowctl enable:{}",
+            "[Tunnel]new Tunnel, idx:{}, cap:{}, dns:{:?}, flowctl enable:{}, kbytes per second:{}",
             tid,
             cap,
             dns_server_addr,
-            quota_per_second_in_kbytes > 0
+            quota_per_second_in_kbytes > 0,
+            quota_per_second_in_kbytes
         );
         let size = 5;
         let rtt_queue = vec![0; size];
