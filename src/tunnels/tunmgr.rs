@@ -3,7 +3,7 @@ use crate::config::{TunCfg, KEEP_ALIVE_INTERVAL};
 use failure::Error;
 use log::{debug, error, info};
 use std::cell::RefCell;
-use std::collections::HashMap;
+use fnv::FnvHashMap as HashMap;
 use std::net::SocketAddr;
 use std::rc::Rc;
 use std::result::Result;
@@ -38,7 +38,7 @@ impl TunMgr {
         Rc::new(RefCell::new(TunMgr {
             is_dns_tun: dns,
             tunnel_id: 0,
-            tunnels_map: HashMap::new(),
+            tunnels_map: HashMap::default(),
             keepalive_trigger: None,
             discarded: false,
             dns_server_addr,
