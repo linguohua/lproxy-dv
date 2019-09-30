@@ -32,7 +32,7 @@ pub fn proxy_request(
             let sockaddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::from(ip32)), port);
             info!("[Proxy] proxy request to ip:{:?}", sockaddr);
 
-            let sockaddr = "127.0.0.1:8001".parse().unwrap();
+            // let sockaddr = "127.0.0.1:8001".parse().unwrap();
             let tl0 = tl.clone();
             let fut = TcpStream::connect(&sockaddr)
                 .and_then(move |socket| {
