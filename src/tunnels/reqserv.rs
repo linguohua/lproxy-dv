@@ -10,6 +10,7 @@ use stream_cancel::{StreamExt, Tripwire};
 use tokio::codec::Decoder;
 use tokio::prelude::*;
 use tokio::runtime::current_thread;
+use tokio::timer::Timeout;
 use tokio_codec::BytesCodec;
 use tokio_tcp::TcpStream;
 
@@ -34,34 +35,37 @@ pub fn proxy_request(
 
             // let sockaddr = "127.0.0.1:8001".parse().unwrap();
             let tl0 = tl.clone();
-            let fut = TcpStream::connect(&sockaddr)
-                .and_then(move |socket| {
-                    proxy_request_internal(socket, rx, tl, req_idx, req_tag);
+            let fut = TcpStream::connect(&sockaddr).and_then(move |socket| {
+                proxy_request_internal(socket, rx, tl, req_idx, req_tag);
 
-                    Ok(())
-                })
-                .map_err(move |e| {
-                    error!("[Proxy] tcp connect failed:{}", e);
-                    let mut tun = tl0.borrow_mut();
-                    tun.on_request_connect_error(req_idx, req_tag);
-                    ()
-                });
+                Ok(())
+            });
+
+            let fut = Timeout::new(fut, Duration::from_secs(5)).map_err(move |e| {
+                error!("[Proxy] tcp connect failed:{}", e);
+                let mut tun = tl0.borrow_mut();
+                tun.on_request_connect_error(req_idx, req_tag);
+                ()
+            });
 
             current_thread::spawn(fut);
         }
         HostInfo::Domain(domain) => {
             info!("[Proxy] proxy request to domain:{}:{}", domain, port);
+            let tl0 = tl.clone();
             let h = &domain[..];
-            let fut = tokio_dns::TcpStream::connect((h, port))
-                .and_then(move |socket| {
-                    proxy_request_internal(socket, rx, tl, req_idx, req_tag);
+            let fut = tokio_dns::TcpStream::connect((h, port)).and_then(move |socket| {
+                proxy_request_internal(socket, rx, tl, req_idx, req_tag);
 
-                    Ok(())
-                })
-                .map_err(|e| {
-                    error!("[Proxy] tcp connect failed:{}", e);
-                    ()
-                });
+                Ok(())
+            });
+
+            let fut = Timeout::new(fut, Duration::from_secs(5)).map_err(move |e| {
+                error!("[Proxy] tcp connect failed:{}", e);
+                let mut tun = tl0.borrow_mut();
+                tun.on_request_connect_error(req_idx, req_tag);
+                ()
+            });
 
             current_thread::spawn(fut);
         }
