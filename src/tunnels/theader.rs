@@ -12,6 +12,7 @@ pub enum Cmd {
     ReqClientFinished = 4,
     ReqServerFinished = 5,
     ReqServerClosed = 6,
+    ReqClientQuota = 7,
 }
 
 #[derive(Debug)]
@@ -61,6 +62,7 @@ impl From<u8> for Cmd {
             4 => Cmd::ReqClientFinished,
             5 => Cmd::ReqServerFinished,
             6 => Cmd::ReqServerClosed,
+            7 => Cmd::ReqClientQuota,
             _ => panic!("unsupport {} to Cmd", v),
         }
     }

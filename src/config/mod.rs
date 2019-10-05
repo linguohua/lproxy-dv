@@ -2,7 +2,6 @@ mod logsimple;
 pub use logsimple::*;
 
 pub const KEEP_ALIVE_INTERVAL: u64 = 5 * 1000;
-pub const PER_TCP_QUOTA: u32 = 100;
 pub const WEBSOCKET_QUEUE_SIZE: usize = 64;
 
 pub const TUN_PATH: &str = "/tunxKMZ2oFFxixut7cO4nI1Q8pNqNHjGfvobrFo8KFyKDS1OLbmGKgRMuK2poadMJbr";

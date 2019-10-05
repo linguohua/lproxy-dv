@@ -1,5 +1,5 @@
 use super::{Cmd, Reqq, THeader, THEADER_SIZE};
-use crate::config::{KEEP_ALIVE_INTERVAL, PER_TCP_QUOTA};
+use crate::config::KEEP_ALIVE_INTERVAL;
 use byte::*;
 use bytes::Bytes;
 use bytes::BytesMut;
@@ -25,7 +25,7 @@ pub enum HostInfo {
 
 pub struct Tunnel {
     pub tunnel_id: usize,
-    pub tx: UnboundedSender<(u16, u16, Message)>,
+    pub tx: UnboundedSender<Message>,
     rawfd: RawFd,
     is_for_dns: bool,
 
@@ -49,25 +49,29 @@ pub struct Tunnel {
     quota_of_interval: usize,
     quota_per_second_in_kbytes: usize,
     pub wait_task: Option<Task>,
+    req_quota: u32,
 }
 
 impl Tunnel {
     pub fn new(
         tid: usize,
-        tx: UnboundedSender<(u16, u16, Message)>,
+        tx: UnboundedSender<Message>,
         rawfd: RawFd,
         dns_server_addr: Option<SocketAddr>,
         cap: usize,
+        req_quota: u32,
         quota_per_second_in_kbytes: usize,
     ) -> LongLiveTun {
         info!(
-            "[Tunnel]new Tunnel, idx:{}, cap:{}, dns:{:?}, flowctl enable:{}, kbytes per second:{}",
+            "[Tunnel]new Tunnel, idx:{}, cap:{}, dns:{:?}, flowctl enable:{}, kbytes per second:{}, quota:{}",
             tid,
             cap,
             dns_server_addr,
             quota_per_second_in_kbytes > 0,
-            quota_per_second_in_kbytes
+            quota_per_second_in_kbytes,
+            req_quota
         );
+
         let size = 5;
         let rtt_queue = vec![0; size];
         let is_for_dns = dns_server_addr.is_some();
@@ -105,6 +109,7 @@ impl Tunnel {
             quota_of_interval,
             quota_per_second_in_kbytes,
             wait_task: None,
+            req_quota,
         }))
     }
 
@@ -231,12 +236,23 @@ impl Tunnel {
 
                 // port, u16
                 let port = b.read_with::<u16>(offset, LE).unwrap();
-                self.requests.alloc(req_idx, req_tag);
+                self.requests.alloc(req_idx, req_tag, self.req_quota);
 
                 // start connect to target
                 if super::proxy_request(self, tl, req_idx, req_tag, port, host) {
                     self.req_count += 1;
                 }
+            }
+            Cmd::ReqClientQuota => {
+                // quota report
+                let req_idx = th.req_idx;
+                let req_tag = th.req_tag;
+
+                let b = &bs[THEADER_SIZE..];
+                let offset = &mut 0;
+                let quota_new = b.read_with::<u16>(offset, LE).unwrap();
+
+                self.flowctl_quota_increase(req_idx, req_tag, quota_new);
             }
             _ => {
                 error!(
@@ -260,7 +276,7 @@ impl Tunnel {
 
         let wmsg = Message::from(buf);
         let tx = &self.tx;
-        let result = tx.unbounded_send((std::u16::MAX, 0, wmsg));
+        let result = tx.unbounded_send(wmsg);
         match result {
             Err(e) => {
                 error!(
@@ -431,7 +447,7 @@ impl Tunnel {
             let wmsg = Message::from(buf);
 
             // send to peer, should always succeed
-            if let Err(e) = self.tx.unbounded_send((std::u16::MAX, 0, wmsg)) {
+            if let Err(e) = self.tx.unbounded_send(wmsg) {
                 error!(
                     "[Tunnel]{} send_request_closed_to_server tx send failed:{}",
                     self.tunnel_id, e
@@ -476,7 +492,7 @@ impl Tunnel {
         msg_body.copy_from_slice(message.as_ref());
 
         let wmsg = Message::from(buf);
-        let result = self.tx.unbounded_send((req_idx, req_tag, wmsg));
+        let result = self.tx.unbounded_send(wmsg);
         match result {
             Err(e) => {
                 error!(
@@ -504,7 +520,7 @@ impl Tunnel {
         }
     }
 
-    pub fn flowctl_quota_increase(&mut self, req_idx: u16, req_tag: u16) {
+    pub fn flowctl_quota_increase(&mut self, req_idx: u16, req_tag: u16, quota: u16) {
         // check req valid
         if !self.check_req_valid(req_idx, req_tag) {
             return;
@@ -514,9 +530,8 @@ impl Tunnel {
         let req_idx2 = req_idx as usize;
         let req = &mut requests.elements[req_idx2];
 
-        req.quota += 1;
-        const HALF_QUOTA: u32 = PER_TCP_QUOTA / 2;
-        if req.quota >= HALF_QUOTA && req.wait_task.is_some() {
+        req.quota += quota as u32;
+        if req.wait_task.is_some() {
             let wait_task = req.wait_task.take().unwrap();
             wait_task.notify();
         }
@@ -573,7 +588,7 @@ impl Tunnel {
         th.write_to(msg_header);
 
         let wmsg = Message::from(buf);
-        let result = self.tx.unbounded_send((std::u16::MAX, 0, wmsg));
+        let result = self.tx.unbounded_send(wmsg);
 
         match result {
             Err(e) => {
@@ -651,7 +666,7 @@ impl Tunnel {
         bs.write_with::<u64>(offset, timestamp, LE).unwrap();
 
         let wmsg = Message::Ping(bs1);
-        let r = self.tx.unbounded_send((std::u16::MAX, 0, wmsg));
+        let r = self.tx.unbounded_send(wmsg);
         match r {
             Err(e) => {
                 error!("[Tunnel]{} tunnel send_ping error:{}", self.tunnel_id, e);

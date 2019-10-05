@@ -1,5 +1,4 @@
 use super::Request;
-use crate::config::PER_TCP_QUOTA;
 use log::error;
 use nix::sys::socket::{shutdown, Shutdown};
 
@@ -17,7 +16,7 @@ impl Reqq {
         Reqq { elements: elements }
     }
 
-    pub fn alloc(&mut self, req_idx: u16, req_tag: u16) {
+    pub fn alloc(&mut self, req_idx: u16, req_tag: u16, quota: u32) {
         let elements = &mut self.elements;
         if (req_idx as usize) >= elements.len() {
             error!("[Reqq] alloc failed, req_idx exceed");
@@ -32,7 +31,7 @@ impl Reqq {
         // req.port_le = port;
         req.request_tx = None;
         req.trigger = None;
-        req.quota = PER_TCP_QUOTA;
+        req.quota = quota;
         req.is_inused = true;
     }
 

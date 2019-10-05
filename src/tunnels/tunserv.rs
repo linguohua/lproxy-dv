@@ -11,12 +11,17 @@ pub fn serve_websocket(wsinfo: WSStreamInfo, s: LongLiveTM) {
     let mut wsinfo = wsinfo;
     let ws_stream = wsinfo.ws.take().unwrap();
     let mut tunnel_cap = find_usize_from_query_string(&wsinfo.path, "cap=");
+    let mut tunnel_req_quota: u32 = find_usize_from_query_string(&wsinfo.path, "quota=") as u32;
     if tunnel_cap > 1024 {
         info!(
             "[tunserv] tunnel cap from query string is too large:{}, reset to 0",
             tunnel_cap
         );
         tunnel_cap = 0;
+    }
+
+    if tunnel_req_quota == 0 {
+        tunnel_req_quota = std::u32::MAX;
     }
 
     let quota_per_second_in_kbytes = find_usize_from_query_string(&wsinfo.path, "limit=");
@@ -34,6 +39,7 @@ pub fn serve_websocket(wsinfo: WSStreamInfo, s: LongLiveTM) {
         rawfd,
         rf.dns_server_addr,
         tunnel_cap,
+        tunnel_req_quota,
         quota_per_second_in_kbytes,
     );
     if let Err(_) = rf.on_tunnel_created(t.clone()) {
@@ -42,7 +48,7 @@ pub fn serve_websocket(wsinfo: WSStreamInfo, s: LongLiveTM) {
     }
 
     let t2 = t.clone();
-    let t3 = t.clone();
+    // let t3 = t.clone();
     let t4 = t.clone();
 
     // `sink` is the stream of messages going out.
@@ -65,14 +71,7 @@ pub fn serve_websocket(wsinfo: WSStreamInfo, s: LongLiveTM) {
         ))
     });
 
-    let send_fut = rx.map(move |(req_idx, req_tag, msg)| {
-        if req_idx != std::u16::MAX {
-            t3.borrow_mut().flowctl_quota_increase(req_idx, req_tag);
-        }
-        msg
-    });
-
-    let send_fut = new_forward_ex(send_fut, sink, t4);
+    let send_fut = new_forward_ex(rx, sink, t4);
 
     // Wait for either of futures to complete.
     let receive_fut = receive_fut
