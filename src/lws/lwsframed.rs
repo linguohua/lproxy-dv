@@ -82,7 +82,7 @@ where
         }
     }
 }
-// use bytes::buf::Buf;
+
 impl<T> Sink for LwsFramed<T>
 where
     T: AsyncWrite,
@@ -91,7 +91,6 @@ where
     type SinkError = Error;
 
     fn start_send(&mut self, item: Self::SinkItem) -> StartSend<Self::SinkItem, Self::SinkError> {
-        // println!("lwsframed start_send, writing remain:{}", item.remaining());
         if self.writing.is_some() {
             self.poll_complete()?;
 
@@ -106,14 +105,10 @@ where
 
     fn poll_complete(&mut self) -> Poll<(), Self::SinkError> {
         if self.writing.is_some() {
+            let writing = self.writing.as_mut().unwrap();
             loop {
-                let writing = self.writing.as_mut().unwrap();
                 try_ready!(self.io.write_buf(writing));
 
-                // println!(
-                //     "lwsframed poll_complete, writing remain:{}",
-                //     writing.remaining()
-                // );
                 if writing.is_completed() {
                     self.writing = None;
                     break;

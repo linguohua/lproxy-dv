@@ -71,8 +71,8 @@ where
 
     fn poll_complete(&mut self) -> Poll<(), Self::SinkError> {
         if self.writing.is_some() {
+            let writing = self.writing.as_mut().unwrap();
             loop {
-                let writing = self.writing.as_mut().unwrap();
                 try_ready!(self.io.write_buf(writing));
 
                 if writing.is_completed() {
