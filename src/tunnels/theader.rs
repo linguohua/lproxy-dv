@@ -1,7 +1,7 @@
 use byte::*;
 use std::convert::From;
 
-pub const THEADER_SIZE: usize = 5;
+pub const THEADER_SIZE: usize = 4;
 
 #[derive(Debug)]
 pub enum Cmd {
@@ -13,40 +13,34 @@ pub enum Cmd {
     ReqServerFinished = 5,
     ReqServerClosed = 6,
     ReqClientQuota = 7,
+    Ping = 8,
+    Pong = 9,
 }
 
 #[derive(Debug)]
 pub struct THeader {
-    pub cmd: u8,
     pub req_idx: u16,
     pub req_tag: u16,
 }
 
 impl THeader {
-    pub fn new(cmd: Cmd, idx: u16, tag: u16) -> THeader {
+    pub fn new(idx: u16, tag: u16) -> THeader {
         THeader {
-            cmd: cmd as u8,
             req_idx: idx,
             req_tag: tag,
         }
     }
 
-    pub fn new_data_header(idx: u16, tag: u16) -> THeader {
-        THeader::new(Cmd::ReqData, idx, tag)
-    }
-
     pub fn read_from(bs: &[u8]) -> THeader {
         let offset = &mut 0;
-        let cmd = bs.read_with::<u8>(offset, LE).unwrap();
         let req_idx = bs.read_with::<u16>(offset, LE).unwrap();
         let req_tag = bs.read_with::<u16>(offset, LE).unwrap();
 
-        THeader::new(Cmd::from(cmd), req_idx, req_tag)
+        THeader::new(req_idx, req_tag)
     }
 
     pub fn write_to(&self, bs: &mut [u8]) {
         let offset = &mut 0;
-        bs.write_with::<u8>(offset, self.cmd, LE).unwrap();
         bs.write_with::<u16>(offset, self.req_idx, LE).unwrap();
         bs.write_with::<u16>(offset, self.req_tag, LE).unwrap();
     }
@@ -63,6 +57,8 @@ impl From<u8> for Cmd {
             5 => Cmd::ReqServerFinished,
             6 => Cmd::ReqServerClosed,
             7 => Cmd::ReqClientQuota,
+            8 => Cmd::Ping,
+            9 => Cmd::Pong,
             _ => panic!("unsupport {} to Cmd", v),
         }
     }

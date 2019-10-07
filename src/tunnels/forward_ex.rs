@@ -4,7 +4,7 @@ use futures::stream::{Fuse, Stream};
 use futures::{try_ready, Async, AsyncSink, Future, Poll};
 use std::cell::RefCell;
 use std::rc::Rc;
-use tungstenite::protocol::Message;
+use crate::lws::WMessage;
 
 /// Future for the `Stream::forward` combinator, which sends a stream of values
 /// to a sink and then waits until the sink has fully flushed those values.
@@ -12,15 +12,15 @@ use tungstenite::protocol::Message;
 pub struct ForwardEx<T: Stream, U> {
     sink: Option<U>,
     stream: Option<Fuse<T>>,
-    buffered: Option<Message>,
+    buffered: Option<WMessage>,
     tun: Rc<RefCell<Tunnel>>,
     has_flowctl: bool,
 }
 
 pub fn new_forward_ex<T, U>(stream: T, sink: U, tun: Rc<RefCell<Tunnel>>) -> ForwardEx<T, U>
 where
-    U: Sink<SinkItem = Message>,
-    T: Stream<Item = Message>,
+    U: Sink<SinkItem = WMessage>,
+    T: Stream<Item = WMessage>,
     T::Error: From<U::SinkError>,
 {
     let has_flowctl = tun.borrow().has_flowctl;
@@ -35,8 +35,8 @@ where
 
 impl<T, U> ForwardEx<T, U>
 where
-    U: Sink<SinkItem = Message>,
-    T: Stream<Item = Message>,
+    U: Sink<SinkItem = WMessage>,
+    T: Stream<Item = WMessage>,
     T::Error: From<U::SinkError>,
 {
     /// Get a shared reference to the inner sink.
@@ -75,7 +75,7 @@ where
         (fuse.into_inner(), sink)
     }
 
-    fn try_start_send(&mut self, item: Message) -> Poll<(), U::SinkError> {
+    fn try_start_send(&mut self, item: WMessage) -> Poll<(), U::SinkError> {
         debug_assert!(self.buffered.is_none());
         if let AsyncSink::NotReady(item) = self
             .sink_mut()
@@ -91,8 +91,8 @@ where
 
 impl<T, U> Future for ForwardEx<T, U>
 where
-    U: Sink<SinkItem = Message>,
-    T: Stream<Item = Message>,
+    U: Sink<SinkItem = WMessage>,
+    T: Stream<Item = WMessage>,
     T::Error: From<U::SinkError>,
 {
     type Item = (T, U);
@@ -103,14 +103,14 @@ where
         // If we've got an item buffered already, we need to write it to the
         // sink before we can do anything else
         if let Some(item) = self.buffered.take() {
-            bytes_cosume = item.len();
+            bytes_cosume = item.content_length;
             try_ready!(self.try_start_send(item))
         }
 
         loop {
             // TODO: flowctl
             if self.has_flowctl {
-                match self.tun.borrow_mut().poll_tunnel_quota_with(bytes_cosume) {
+                match self.tun.borrow_mut().poll_tunnel_quota_with(bytes_cosume as usize) {
                     Err(_) => {}
                     Ok(t) => {
                         if !t {
@@ -126,7 +126,7 @@ where
                 .poll()?
             {
                 Async::Ready(Some(item)) => {
-                    bytes_cosume = item.len();
+                    bytes_cosume = item.content_length;
                     try_ready!(self.try_start_send(item))
                 }
                 Async::Ready(None) => {
@@ -147,17 +147,3 @@ where
         }
     }
 }
-
-// pub trait StreamForwardEx: Stream {
-//     fn forward_ex<U>(self, sink: U, tun: Rc<RefCell<Tunnel>>) -> ForwardEx<Self, U>
-//     where
-//         Self: Stream<Item = Message>,
-//         U: Sink<SinkItem = Message>,
-//         Self::Error: From<U::SinkError>,
-//         Self: Sized,
-//     {
-//         new_forward_ex(self, sink, tun)
-//     }
-// }
-
-// impl<S> StreamForwardEx for S where S: Stream<Item = Message> {}

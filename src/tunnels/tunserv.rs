@@ -65,10 +65,10 @@ pub fn serve_websocket(wsinfo: WSStreamInfo, s: LongLiveTM) {
     });
 
     let rx = rx.map_err(|_| {
-        tungstenite::error::Error::Io(std::io::Error::new(
+        std::io::Error::new(
             std::io::ErrorKind::Other,
             "[tunbuilder] rx-shit",
-        ))
+        )
     });
 
     let send_fut = new_forward_ex(rx, sink, t4);

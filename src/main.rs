@@ -2,6 +2,7 @@ mod config;
 mod service;
 mod tlsserver;
 mod tunnels;
+mod lws;
 
 use futures::future::lazy;
 use futures::stream::Stream;

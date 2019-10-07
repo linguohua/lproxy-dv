@@ -1,4 +1,4 @@
-use crate::config::{TunCfg, DNS_PATH, TUN_PATH, WEBSOCKET_QUEUE_SIZE};
+use crate::config::{TunCfg, DNS_PATH, TUN_PATH};
 use crate::service::SubServiceCtlCmd;
 use crate::service::TunMgrStub;
 use failure::Error;
@@ -16,12 +16,9 @@ use tokio::runtime::current_thread::{self};
 use tokio_tcp::TcpListener;
 use tokio_tcp::TcpStream;
 use tokio_tls::TlsStream;
-use tokio_tungstenite::accept_hdr_async_with_config;
-use tokio_tungstenite::WebSocketStream;
-use tungstenite::handshake::server::Request;
-use tungstenite::protocol::WebSocketConfig;
+use crate::lws::{self, LwsFramed};
 
-type WSStream = WebSocketStream<TlsStream<TcpStream>>;
+type WSStream = LwsFramed<TlsStream<TcpStream>>;
 type LongLive = Rc<RefCell<Listener>>;
 
 pub struct WSStreamInfo {
@@ -95,44 +92,32 @@ impl Listener {
                 // Accept the TLS connection.
                 let tls_accept = tls_acceptor
                     .accept(tcp)
+                    .map_err(|tslerr| {
+                        error!("TLS Accept error:{}", tslerr);
+                        std::io::Error::from(std::io::ErrorKind::NotConnected)
+                    })
                     .and_then(move |tls| {
-                        let path = Rc::new(RefCell::new(String::new()));
-                        let path_clone = path.clone();
-                        let cb = move |req: &Request| {
-                            // println!("req path:{:?}", req);
-                            let mut s = path_clone.borrow_mut();
-                            *s = req.path.to_string();
+                        // handshake
+                        let handshake = lws::do_server_hanshake(tls);
+                        let handshake = handshake.and_then(move |(lsocket, path)| {
+                            let p = path.unwrap();
+                            info!("[Server]path:{}", p);
+                            let lstream = lws::LwsFramed::new(lsocket, None);
+                            let s = ll.clone();
+                            let mut s = s.borrow_mut();
+                            if p.contains(DNS_PATH) {
+                                s.on_accept_dns_websocket(rawfd, lstream, (*p).to_string());
+                            } else if p.contains(TUN_PATH) {
+                                s.on_accept_proxy_websocket(rawfd, lstream, (*p).to_string());
+                            }
 
-                            Ok(None)
-                        };
+                            Ok(())
+                        });
 
-                        let mut wscfg = WebSocketConfig::default();
-                        wscfg.max_send_queue = Some(WEBSOCKET_QUEUE_SIZE);
-                        let wscfg = Some(wscfg);
-                        let fut = accept_hdr_async_with_config(tls, cb, wscfg)
-                            .and_then(move |ws_stream| {
-                                let p = path.borrow();
-                                println!("[Server]path:{}", p);
-
-                                let s = ll.clone();
-                                let mut s = s.borrow_mut();
-                                if p.contains(DNS_PATH) {
-                                    s.on_accept_dns_websocket(rawfd, ws_stream, (*p).to_string());
-                                } else if p.contains(TUN_PATH) {
-                                    s.on_accept_proxy_websocket(rawfd, ws_stream, (*p).to_string());
-                                }
-
-                                Ok(())
-                            })
-                            .or_else(|e| {
-                                println!("[Server]websocket error:{}", e);
-                                Ok(())
-                            });
-
-                        fut
+                        handshake
                     })
                     .map_err(|err| {
-                        println!("[Server]TLS accept error: {:?}", err);
+                        error!("[Server]TLS accept error: {:?}", err);
                         ()
                     });
 
@@ -141,7 +126,7 @@ impl Listener {
                 Ok(())
             })
             .map_err(|err| {
-                println!("[Server]server error {:?}", err);
+                error!("[Server]server error {:?}", err);
             });
 
         current_thread::spawn(server);

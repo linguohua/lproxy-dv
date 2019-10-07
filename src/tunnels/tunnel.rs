@@ -1,8 +1,7 @@
 use super::{Cmd, Reqq, THeader, THEADER_SIZE};
 use crate::config::KEEP_ALIVE_INTERVAL;
+use crate::lws::{RMessage, TMessage, WMessage};
 use byte::*;
-use bytes::Bytes;
-use bytes::BytesMut;
 use futures::sync::mpsc::UnboundedSender;
 use futures::task::Task;
 use log::{error, info};
@@ -14,7 +13,6 @@ use std::rc::Rc;
 use std::result::Result;
 use std::time::Instant;
 use stream_cancel::Trigger;
-use tungstenite::protocol::Message;
 
 pub type LongLiveTun = Rc<RefCell<Tunnel>>;
 
@@ -25,7 +23,7 @@ pub enum HostInfo {
 
 pub struct Tunnel {
     pub tunnel_id: usize,
-    pub tx: UnboundedSender<Message>,
+    pub tx: UnboundedSender<WMessage>,
     rawfd: RawFd,
     is_for_dns: bool,
 
@@ -55,7 +53,7 @@ pub struct Tunnel {
 impl Tunnel {
     pub fn new(
         tid: usize,
-        tx: UnboundedSender<Message>,
+        tx: UnboundedSender<WMessage>,
         rawfd: RawFd,
         dns_server_addr: Option<SocketAddr>,
         cap: usize,
@@ -113,48 +111,51 @@ impl Tunnel {
         }))
     }
 
-    pub fn on_tunnel_msg(&mut self, msg: Message, tl: LongLiveTun) {
+    pub fn on_tunnel_msg(&mut self, msg: RMessage, tl: LongLiveTun) {
         // info!("[Tunnel]on_tunnel_msg");
-        if msg.is_ping() {
-            return;
-        }
+        let bs = msg.buf.as_ref().unwrap();
+        let bs = &bs[2..]; // skip the length
 
-        if msg.is_pong() {
-            // info!("[Tunnel]on pong msg");
-            self.on_pong(msg);
+        let offset = &mut 0;
+        let cmd = bs.read_with::<u8>(offset, LE).unwrap();
+        let bs = &bs[1..]; // skip cmd
+        let cmd = Cmd::from(cmd);
 
-            return;
-        }
-
-        if !msg.is_binary() {
-            info!(
-                "[Tunnel]{} tunnel should only handle binary msg!",
-                self.tunnel_id
-            );
-            return;
-        }
-
-        if self.is_for_dns {
-            self.on_tunnel_dns_msg(msg, tl);
-        } else {
-            self.on_tunnel_proxy_msg(msg, tl);
+        match cmd {
+            Cmd::Ping => {
+                // send to per
+                self.reply_ping(msg);
+            }
+            Cmd::Pong => {
+                self.on_pong(bs);
+            }
+            _ => {
+                if self.is_for_dns {
+                    self.on_tunnel_dns_msg(msg, tl);
+                } else {
+                    self.on_tunnel_proxy_msg(cmd, msg, tl);
+                }
+            }
         }
     }
 
-    fn on_tunnel_dns_msg(&mut self, msg: Message, tl: LongLiveTun) {
+    fn on_tunnel_dns_msg(&mut self, mut msg: RMessage, tl: LongLiveTun) {
         // do udp query
-        let mut bs = msg.into_data();
+        let mut vec = msg.buf.take().unwrap();
+        let bs = &vec[3..];
         let offset = &mut 0;
         let port = bs.read_with::<u16>(offset, LE).unwrap();
         let ip32 = bs.read_with::<u32>(offset, LE).unwrap();
 
-        super::proxy_dns(self, tl, bs.split_off(6), port, ip32);
+        super::proxy_dns(self, tl, vec.split_off(9), port, ip32);
     }
 
-    fn on_tunnel_proxy_msg(&mut self, msg: Message, tl: LongLiveTun) {
-        let bs = msg.into_data();
+    fn on_tunnel_proxy_msg(&mut self, cmd: Cmd, mut msg: RMessage, tl: LongLiveTun) {
+        let vec = msg.buf.take().unwrap();
+        let bs = &vec[3..];
         let th = THeader::read_from(&bs[..]);
-        let cmd = Cmd::from(th.cmd);
+        let bs = &bs[THEADER_SIZE..];
+
         match cmd {
             Cmd::ReqData => {
                 // data
@@ -170,8 +171,8 @@ impl Tunnel {
                         return;
                     }
                     Some(tx) => {
-                        let b = Bytes::from(&bs[THEADER_SIZE..]);
-                        let result = tx.unbounded_send(b);
+                        let wmsg = WMessage::new(vec, (3 + THEADER_SIZE) as u16);
+                        let result = tx.unbounded_send(wmsg);
                         match result {
                             Err(e) => {
                                 info!(
@@ -215,14 +216,13 @@ impl Tunnel {
                 let req_idx = th.req_idx;
                 let req_tag = th.req_tag;
 
-                let b = &bs[THEADER_SIZE..];
                 let offset = &mut 0;
-                let address_type = b.read_with::<u8>(offset, LE).unwrap();
+                let address_type = bs.read_with::<u8>(offset, LE).unwrap();
                 let host;
                 if address_type == 1 {
                     // domain name
-                    let domain_name_len: usize = b.read_with::<u8>(offset, LE).unwrap() as usize;
-                    let domain_name_bytes = &b[2..(2 + domain_name_len)];
+                    let domain_name_len: usize = bs.read_with::<u8>(offset, LE).unwrap() as usize;
+                    let domain_name_bytes = &bs[2..(2 + domain_name_len)];
                     host = HostInfo::Domain(
                         std::str::from_utf8(domain_name_bytes).unwrap().to_string(),
                     );
@@ -230,12 +230,12 @@ impl Tunnel {
                     *offset = *offset + domain_name_len;
                 } else {
                     // default: Ipv4
-                    let ip = b.read_with::<u32>(offset, LE).unwrap(); // 4 bytes
+                    let ip = bs.read_with::<u32>(offset, LE).unwrap(); // 4 bytes
                     host = HostInfo::IP(ip);
                 }
 
                 // port, u16
-                let port = b.read_with::<u16>(offset, LE).unwrap();
+                let port = bs.read_with::<u16>(offset, LE).unwrap();
                 self.requests.alloc(req_idx, req_tag, self.req_quota);
 
                 // start connect to target
@@ -248,9 +248,8 @@ impl Tunnel {
                 let req_idx = th.req_idx;
                 let req_tag = th.req_tag;
 
-                let b = &bs[THEADER_SIZE..];
                 let offset = &mut 0;
-                let quota_new = b.read_with::<u16>(offset, LE).unwrap();
+                let quota_new = bs.read_with::<u16>(offset, LE).unwrap();
 
                 self.flowctl_quota_increase(req_idx, req_tag, quota_new);
             }
@@ -264,17 +263,22 @@ impl Tunnel {
     }
 
     pub fn on_dns_reply(&self, data: Vec<u8>, len: usize, port: u16, ip32: u32) {
-        let hsize = 6; // port + ipv4
-        let mut buf = vec![0; hsize + len];
+        let hsize = 2 + 1 + 6; // length + cmd + port + ipv4
+        let total = hsize + len;
+        let mut buf = vec![0; total];
         let header = &mut buf[0..hsize];
         let offset = &mut 0;
+        header.write_with::<u16>(offset, total as u16, LE).unwrap();
+        header
+            .write_with::<u8>(offset, Cmd::ReqData as u8, LE)
+            .unwrap();
         header.write_with::<u16>(offset, port, LE).unwrap();
         header.write_with::<u32>(offset, ip32, LE).unwrap();
 
         let msg_body = &mut buf[hsize..];
         msg_body.copy_from_slice(&data[..len]);
 
-        let wmsg = Message::from(buf);
+        let wmsg = WMessage::new(buf, 0);
         let tx = &self.tx;
         let result = tx.unbounded_send(wmsg);
         match result {
@@ -290,11 +294,34 @@ impl Tunnel {
         }
     }
 
-    fn on_pong(&mut self, msg: Message) {
-        let bs = msg.into_data();
+    fn reply_ping(&mut self, mut msg: RMessage) {
+        info!("[Tunnel] reply_ping");
+        let mut vec = msg.buf.take().unwrap();
+        let bs = &mut vec[2..];
+        let offset = &mut 0;
+        bs.write_with::<u8>(offset, Cmd::Pong as u8, LE).unwrap();
+
+        let wmsg = WMessage::new(vec, 0);
+        let tx = &self.tx;
+        let result = tx.unbounded_send(wmsg);
+        match result {
+            Err(e) => {
+                error!(
+                    "[Tunnel]{} reply_ping tun send error:{}, tun_tx maybe closed",
+                    self.tunnel_id, e
+                );
+            }
+            _ => {
+                //info!("[Tunnel]on_dns_reply unbounded_send request msg",)
+            }
+        }
+    }
+
+    fn on_pong(&mut self, bs: &[u8]) {
+        info!("[Tunnel] on_pong");
         let len = bs.len();
         if len != 8 {
-            error!("[Tunnel]{} pong data length({}) != 8", self.tunnel_id, len);
+            error!("[Tunnel]pong data length({}) != 8", len);
             return;
         }
 
@@ -305,11 +332,7 @@ impl Tunnel {
         let timestamp = bs.read_with::<u64>(offset, LE).unwrap();
 
         let in_ms = self.get_elapsed_milliseconds();
-        assert!(
-            in_ms >= timestamp,
-            "[Tunnel]{} pong timestamp > now!",
-            self.tunnel_id
-        );
+        assert!(in_ms >= timestamp, "[Tunnel]pong timestamp > now!");
 
         let rtt = in_ms - timestamp;
         let rtt = rtt as i64;
@@ -333,7 +356,7 @@ impl Tunnel {
         }
     }
 
-    fn get_request_tx(&self, req_idx: u16, req_tag: u16) -> Option<UnboundedSender<Bytes>> {
+    fn get_request_tx(&self, req_idx: u16, req_tag: u16) -> Option<UnboundedSender<WMessage>> {
         let requests = &self.requests;
         let req_idx = req_idx as usize;
         if req_idx >= requests.elements.len() {
@@ -357,7 +380,7 @@ impl Tunnel {
 
     pub fn save_request_tx(
         &mut self,
-        tx: UnboundedSender<bytes::Bytes>,
+        tx: UnboundedSender<WMessage>,
         req_idx: u16,
         req_tag: u16,
     ) -> Result<(), ()> {
@@ -436,15 +459,21 @@ impl Tunnel {
             self.req_count -= 1;
 
             // send request to agent
-            let hsize = THEADER_SIZE;
+            let hsize = 3 + THEADER_SIZE;
             let mut buf = vec![0; hsize];
+            let offset = &mut 0;
+            let header = &mut buf[..];
+            header.write_with::<u16>(offset, hsize as u16, LE).unwrap();
+            header
+                .write_with::<u8>(offset, Cmd::ReqServerClosed as u8, LE)
+                .unwrap();
 
-            let th = THeader::new(Cmd::ReqServerClosed, req_idx, req_tag);
-            let msg_header = &mut buf[0..hsize];
+            let th = THeader::new(req_idx, req_tag);
+            let msg_header = &mut buf[3..];
             th.write_to(msg_header);
 
             // websocket message
-            let wmsg = Message::from(buf);
+            let wmsg = WMessage::new(buf, 0);
 
             // send to peer, should always succeed
             if let Err(e) = self.tx.unbounded_send(wmsg) {
@@ -464,14 +493,16 @@ impl Tunnel {
         self.on_request_closed(req_idx, req_tag);
     }
 
-    pub fn on_request_msg(&mut self, message: BytesMut, req_idx: u16, req_tag: u16) -> bool {
+    pub fn on_request_msg(&mut self, mut message: TMessage, req_idx: u16, req_tag: u16) -> bool {
         // info!("[Tunnel]on_request_msg, req:{}", req_idx);
 
         if !self.check_req_valid(req_idx, req_tag) {
             return false;
         }
 
-        let size = message.len();
+        let mut vec = message.buf.take().unwrap();
+        let ll = vec.len();
+        let size = vec.len() - (3 + THEADER_SIZE);
         self.recv_message_count += 1;
         self.recv_message_size += size;
         if self.recv_message_count % 200 == 0 {
@@ -482,16 +513,16 @@ impl Tunnel {
             );
         }
 
-        let hsize = THEADER_SIZE;
-        let mut buf = vec![0; hsize + size];
+        let bs = &mut vec[..];
+        let offset = &mut 0;
+        bs.write_with::<u16>(offset, ll as u16, LE).unwrap();
+        bs.write_with::<u8>(offset, Cmd::ReqData as u8, LE).unwrap();
 
-        let th = THeader::new_data_header(req_idx, req_tag);
-        let msg_header = &mut buf[0..hsize];
+        let th = THeader::new(req_idx, req_tag);
+        let msg_header = &mut vec[3..];
         th.write_to(msg_header);
-        let msg_body = &mut buf[hsize..];
-        msg_body.copy_from_slice(message.as_ref());
 
-        let wmsg = Message::from(buf);
+        let wmsg = WMessage::new(vec, 0);
         let result = self.tx.unbounded_send(wmsg);
         match result {
             Err(e) => {
@@ -580,14 +611,22 @@ impl Tunnel {
             return;
         }
 
-        let hsize = THEADER_SIZE;
+        // send request to agent
+        let hsize = 3 + THEADER_SIZE;
         let mut buf = vec![0; hsize];
+        let offset = &mut 0;
+        let header = &mut buf[..];
+        header.write_with::<u16>(offset, hsize as u16, LE).unwrap();
+        header
+            .write_with::<u8>(offset, Cmd::ReqServerFinished as u8, LE)
+            .unwrap();
 
-        let th = THeader::new(Cmd::ReqServerFinished, req_idx, req_tag);
-        let msg_header = &mut buf[0..hsize];
+        let th = THeader::new(req_idx, req_tag);
+        let msg_header = &mut buf[3..];
         th.write_to(msg_header);
 
-        let wmsg = Message::from(buf);
+        // websocket message
+        let wmsg = WMessage::new(buf, 0);
         let result = self.tx.unbounded_send(wmsg);
 
         match result {
@@ -660,22 +699,20 @@ impl Tunnel {
         }
 
         let timestamp = self.get_elapsed_milliseconds();
-        let mut bs1 = vec![0 as u8; 8];
+        let mut bs1 = vec![0 as u8; 11]; // 2 bytes length, 1 byte cmd, 8 byte content
         let bs = &mut bs1[..];
         let offset = &mut 0;
+        bs.write_with::<u16>(offset, 11, LE).unwrap();
+        bs.write_with::<u8>(offset, Cmd::Ping as u8, LE).unwrap();
         bs.write_with::<u64>(offset, timestamp, LE).unwrap();
 
-        let wmsg = Message::Ping(bs1);
-        let r = self.tx.unbounded_send(wmsg);
+        let msg = WMessage::new(bs1, 0);
+        let r = self.tx.unbounded_send(msg);
         match r {
             Err(e) => {
-                error!("[Tunnel]{} tunnel send_ping error:{}", self.tunnel_id, e);
+                error!("[Tunnel]tunnel send_ping error:{}", e);
             }
             _ => {
-                info!(
-                    "[Tunnel]{} req count:{}, tranfor size:{}",
-                    self.tunnel_id, self.req_count, self.recv_message_size
-                );
                 self.ping_count += 1;
                 if ping_count > 0 {
                     // TODO: fix accurate RTT?

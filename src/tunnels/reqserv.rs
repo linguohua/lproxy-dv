@@ -7,12 +7,11 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::os::unix::io::AsRawFd;
 use std::time::Duration;
 use stream_cancel::{StreamExt, Tripwire};
-use tokio::codec::Decoder;
 use tokio::prelude::*;
 use tokio::runtime::current_thread;
 use tokio::timer::Timeout;
-use tokio_codec::BytesCodec;
 use tokio_tcp::TcpStream;
+use crate::lws::{WMessage, TcpFramed};
 
 pub fn proxy_request(
     tun: &mut Tunnel,
@@ -76,7 +75,7 @@ pub fn proxy_request(
 
 fn proxy_request_internal(
     socket: TcpStream,
-    rx: UnboundedReceiver<bytes::Bytes>,
+    rx: UnboundedReceiver<WMessage>,
     tl: LongLiveTun,
     req_idx: u16,
     req_tag: u16,
@@ -88,7 +87,7 @@ fn proxy_request_internal(
     // socket.set_nodelay(true).unwrap();
 
     let rawfd = socket.as_raw_fd();
-    let framed = BytesCodec::new().framed(socket);
+    let framed = TcpFramed::new(socket);
     let (sink, stream) = framed.split();
     let (trigger, tripwire) = Tripwire::new();
 

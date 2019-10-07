@@ -1,15 +1,15 @@
-use bytes::Bytes;
 use futures::sync::mpsc::UnboundedSender;
 use futures::task::Task;
 use std::fmt;
 use std::os::unix::io::RawFd;
 use stream_cancel::Trigger;
+use crate::lws::WMessage;
 
 pub struct Request {
     pub index: u16,
     pub tag: u16,
     pub is_inused: bool,
-    pub request_tx: Option<UnboundedSender<Bytes>>,
+    pub request_tx: Option<UnboundedSender<WMessage>>,
     pub trigger: Option<Trigger>,
 
     // pub ipv4_le: u32,
