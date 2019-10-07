@@ -58,7 +58,11 @@ where
 
     fn start_send(&mut self, item: Self::SinkItem) -> StartSend<Self::SinkItem, Self::SinkError> {
         if self.writing.is_some() {
-            return Ok(AsyncSink::NotReady(item));
+            self.poll_complete()?;
+
+            if self.writing.is_some() {
+                return Ok(AsyncSink::NotReady(item));
+            }
         }
 
         self.writing = Some(item);

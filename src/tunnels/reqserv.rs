@@ -1,4 +1,5 @@
 use super::{HostInfo, LongLiveTun, Tunnel};
+use crate::lws::{TcpFramed, WMessage};
 use futures::future::Future;
 use futures::sync::mpsc::{unbounded, UnboundedReceiver};
 use log::{error, info};
@@ -11,7 +12,6 @@ use tokio::prelude::*;
 use tokio::runtime::current_thread;
 use tokio::timer::Timeout;
 use tokio_tcp::TcpStream;
-use crate::lws::{WMessage, TcpFramed};
 
 pub fn proxy_request(
     tun: &mut Tunnel,
@@ -30,9 +30,9 @@ pub fn proxy_request(
     match host {
         HostInfo::IP(ip32) => {
             let sockaddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::from(ip32)), port);
+            // llet sockaddr = "127.0.0.1:8001".parse().unwrap();
             info!("[Proxy] proxy request to ip:{:?}", sockaddr);
 
-            // let sockaddr = "127.0.0.1:8001".parse().unwrap();
             let tl0 = tl.clone();
             let fut = TcpStream::connect(&sockaddr).and_then(move |socket| {
                 proxy_request_internal(socket, rx, tl, req_idx, req_tag);

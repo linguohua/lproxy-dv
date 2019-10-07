@@ -171,6 +171,10 @@ impl Tunnel {
                         return;
                     }
                     Some(tx) => {
+                        info!(
+                            "[Tunnel]{}proxy request msg, {}:{}",
+                            self.tunnel_id, req_idx, req_tag
+                        );
                         let wmsg = WMessage::new(vec, (3 + THEADER_SIZE) as u16);
                         let result = tx.unbounded_send(wmsg);
                         match result {
@@ -295,7 +299,7 @@ impl Tunnel {
     }
 
     fn reply_ping(&mut self, mut msg: RMessage) {
-        info!("[Tunnel] reply_ping");
+        //info!("[Tunnel] reply_ping");
         let mut vec = msg.buf.take().unwrap();
         let bs = &mut vec[2..];
         let offset = &mut 0;
@@ -318,7 +322,7 @@ impl Tunnel {
     }
 
     fn on_pong(&mut self, bs: &[u8]) {
-        info!("[Tunnel] on_pong");
+        //info!("[Tunnel] on_pong");
         let len = bs.len();
         if len != 8 {
             error!("[Tunnel]pong data length({}) != 8", len);
@@ -494,7 +498,7 @@ impl Tunnel {
     }
 
     pub fn on_request_msg(&mut self, mut message: TMessage, req_idx: u16, req_tag: u16) -> bool {
-        // info!("[Tunnel]on_request_msg, req:{}", req_idx);
+        // info!("[Tunnel]{} on_request_msg, req:{}", self.tunnel_id, req_idx);
 
         if !self.check_req_valid(req_idx, req_tag) {
             return false;
@@ -521,6 +525,12 @@ impl Tunnel {
         let th = THeader::new(req_idx, req_tag);
         let msg_header = &mut vec[3..];
         th.write_to(msg_header);
+
+        // info!(
+        //     "[Tunnel]{} send request response to peer, len:{}",
+        //     self.tunnel_id,
+        //     vec.len()
+        // );
 
         let wmsg = WMessage::new(vec, 0);
         let result = self.tx.unbounded_send(wmsg);
