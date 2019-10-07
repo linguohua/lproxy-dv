@@ -2,6 +2,7 @@ use super::{RMessage, WMessage};
 use bytes::BufMut;
 use futures::prelude::*;
 use futures::try_ready;
+use std::collections::VecDeque;
 use std::io::Error;
 use tokio::io::AsyncRead;
 use tokio::prelude::*;
@@ -10,6 +11,7 @@ pub struct LwsFramed<T> {
     io: T,
     reading: Option<RMessage>,
     writing: Option<WMessage>,
+    write_queue: VecDeque<WMessage>,
     tail: Option<Vec<u8>>,
 }
 
@@ -20,6 +22,7 @@ impl<T> LwsFramed<T> {
             reading: None,
             writing: None,
             tail,
+            write_queue: VecDeque::with_capacity(128),
         }
     }
 }
@@ -91,27 +94,33 @@ where
     type SinkError = Error;
 
     fn start_send(&mut self, item: Self::SinkItem) -> StartSend<Self::SinkItem, Self::SinkError> {
-        if self.writing.is_some() {
+        if self.write_queue.len() >= 128 {
             self.poll_complete()?;
 
-            if self.writing.is_some() {
+            if self.write_queue.len() >= 128 {
                 return Ok(AsyncSink::NotReady(item));
             }
         }
 
-        self.writing = Some(item);
+        self.write_queue.push_back(item);
         Ok(AsyncSink::Ready)
     }
 
     fn poll_complete(&mut self) -> Poll<(), Self::SinkError> {
-        if self.writing.is_some() {
-            let writing = self.writing.as_mut().unwrap();
+        if self.writing.is_some() || self.write_queue.len() > 0 {
             loop {
+                if self.writing.is_none() {
+                    self.writing = self.write_queue.pop_front();
+                    if self.writing.is_none() {
+                        break;
+                    }
+                }
+
+                let writing = self.writing.as_mut().unwrap();
                 try_ready!(self.io.write_buf(writing));
 
                 if writing.is_completed() {
                     self.writing = None;
-                    break;
                 }
             }
         }
