@@ -59,7 +59,7 @@ impl BufMut for RMessage {
             let offset = &mut 0;
             self.cached_legnth = bs.read_with::<u16>(offset, LE).unwrap();
 
-            if self.cached_legnth == 0 || self.cached_legnth >= (DEFAULT_CAP as u16) {
+            if self.cached_legnth == 0 || self.cached_legnth > (DEFAULT_CAP as u16) {
                 panic!("cached_legnth not valid:{}", self.cached_legnth);
             }
         }
