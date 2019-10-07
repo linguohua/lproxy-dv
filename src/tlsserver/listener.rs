@@ -1,4 +1,5 @@
 use crate::config::{TunCfg, DNS_PATH, TUN_PATH};
+use crate::lws::{self, LwsFramed};
 use crate::service::SubServiceCtlCmd;
 use crate::service::TunMgrStub;
 use failure::Error;
@@ -16,9 +17,8 @@ use tokio::runtime::current_thread::{self};
 use tokio_tcp::TcpListener;
 use tokio_tcp::TcpStream;
 use tokio_tls::TlsStream;
-use crate::lws::{self, LwsFramed};
 
-type WSStream = LwsFramed<TlsStream<TcpStream>>;
+type WSStream = LwsFramed<TcpStream>;
 type LongLive = Rc<RefCell<Listener>>;
 
 pub struct WSStreamInfo {
@@ -71,12 +71,13 @@ impl Listener {
 
         // Create the TLS acceptor.
         // let der = include_bytes!("identity.p12");
-        let mut file = File::open(&self.pkcs12).unwrap();
-        let mut identity = vec![];
-        file.read_to_end(&mut identity).unwrap();
-        let identity = Identity::from_pkcs12(&identity, &self.pkcs12_password).unwrap();
-        let tls_acceptor =
-            tokio_tls::TlsAcceptor::from(native_tls::TlsAcceptor::builder(identity).build()?);
+        // let mut file = File::open(&self.pkcs12).unwrap();
+        // let mut identity = vec![];
+        // file.read_to_end(&mut identity).unwrap();
+        // let identity = Identity::from_pkcs12(&identity, &self.pkcs12_password).unwrap();
+
+        // let tls_acceptor =
+        //     tokio_tls::TlsAcceptor::from(native_tls::TlsAcceptor::builder(identity).build()?);
 
         let (trigger, tripwire) = Tripwire::new();
         self.listener_trigger = Some(trigger);
@@ -90,38 +91,29 @@ impl Listener {
                 // tcp.set_nodelay(true).unwrap();
 
                 // Accept the TLS connection.
-                let tls_accept = tls_acceptor
-                    .accept(tcp)
-                    .map_err(|tslerr| {
-                        error!("TLS Accept error:{}", tslerr);
-                        std::io::Error::from(std::io::ErrorKind::NotConnected)
-                    })
-                    .and_then(move |tls| {
-                        // handshake
-                        let handshake = lws::do_server_hanshake(tls);
-                        let handshake = handshake.and_then(move |(lsocket, path)| {
-                            let p = path.unwrap();
-                            info!("[Server]path:{}", p);
-                            let lstream = lws::LwsFramed::new(lsocket, None);
-                            let s = ll.clone();
-                            let mut s = s.borrow_mut();
-                            if p.contains(DNS_PATH) {
-                                s.on_accept_dns_websocket(rawfd, lstream, (*p).to_string());
-                            } else if p.contains(TUN_PATH) {
-                                s.on_accept_proxy_websocket(rawfd, lstream, (*p).to_string());
-                            }
+                // handshake
+                let handshake = lws::do_server_hanshake(tcp);
+                let handshake = handshake
+                    .and_then(move |(lsocket, path)| {
+                        let p = path.unwrap();
+                        info!("[Server]path:{}", p);
+                        let lstream = lws::LwsFramed::new(lsocket, None);
+                        let s = ll.clone();
+                        let mut s = s.borrow_mut();
+                        if p.contains(DNS_PATH) {
+                            s.on_accept_dns_websocket(rawfd, lstream, (*p).to_string());
+                        } else if p.contains(TUN_PATH) {
+                            s.on_accept_proxy_websocket(rawfd, lstream, (*p).to_string());
+                        }
 
-                            Ok(())
-                        });
-
-                        handshake
+                        Ok(())
                     })
-                    .map_err(|err| {
-                        error!("[Server]TLS accept error: {:?}", err);
+                    .map_err(|e| {
+                        error!("[Server], handshake error:{}", e);
                         ()
                     });
 
-                current_thread::spawn(tls_accept);
+                current_thread::spawn(handshake);
 
                 Ok(())
             })
