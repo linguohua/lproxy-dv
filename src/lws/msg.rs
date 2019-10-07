@@ -153,12 +153,10 @@ impl BufMut for TMessage {
     }
 
     unsafe fn bytes_mut(&mut self) -> &mut [u8] {
-        let len = self.remaining_mut();
-        let vec = self.buf.as_mut().unwrap();
+        let vec = self.buf.as_ref().unwrap();
         let begin = vec.len();
-        let end = begin + len;
 
         let x = self.as_raw();
-        &mut x[begin..end]
+        &mut x[begin..]
     }
 }
