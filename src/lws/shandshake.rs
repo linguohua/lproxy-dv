@@ -48,7 +48,7 @@ impl<T> SHandshake<T> {
             let pos2 = pos + 4;
             let header = bm.split_to(pos2);
             let st = String::from_utf8_lossy(header.as_ref());
-            println!("recv header:\n{}", st);
+            //println!("recv header:\n{}", st);
 
             // extract path
             // GET /tunxxxxyyy?cap=1000 HTTP/1.1
@@ -87,7 +87,7 @@ impl<T> SHandshake<T> {
                 convert_key(key.as_bytes()),
             );
 
-            println!("resp header:\n{}", h);
+            //println!("resp header:\n{}", h);
             let write_buf = h.as_bytes();
             let wmsg = super::WMessage::new(write_buf.to_vec(), 0);
             self.wmsg = Some(wmsg);

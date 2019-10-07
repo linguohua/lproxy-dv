@@ -171,10 +171,10 @@ impl Tunnel {
                         return;
                     }
                     Some(tx) => {
-                        info!(
-                            "[Tunnel]{}proxy request msg, {}:{}",
-                            self.tunnel_id, req_idx, req_tag
-                        );
+                        // info!(
+                        //     "[Tunnel]{} proxy request msg, {}:{}",
+                        //     self.tunnel_id, req_idx, req_tag
+                        // );
                         let wmsg = WMessage::new(vec, (3 + THEADER_SIZE) as u16);
                         let result = tx.unbounded_send(wmsg);
                         match result {
