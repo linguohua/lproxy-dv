@@ -22,7 +22,8 @@ pub fn proxy_request(
     host: HostInfo,
 ) -> bool {
     let (tx, rx) = unbounded();
-    if let Err(_) = tun.save_request_tx(tx, req_idx, req_tag) {
+    let (trigger, tripwire) = Tripwire::new();
+    if let Err(_) = tun.save_request_tx(tx, trigger, req_idx, req_tag) {
         error!("[Proxy]save_request_tx failed");
         return false;
     }
@@ -35,7 +36,7 @@ pub fn proxy_request(
 
             let tl0 = tl.clone();
             let fut = TcpStream::connect(&sockaddr).and_then(move |socket| {
-                proxy_request_internal(socket, rx, tl, req_idx, req_tag);
+                proxy_request_internal(socket, rx, tripwire, tl, req_idx, req_tag);
 
                 Ok(())
             });
@@ -54,7 +55,7 @@ pub fn proxy_request(
             let tl0 = tl.clone();
             let h = &domain[..];
             let fut = tokio_dns::TcpStream::connect((h, port)).and_then(move |socket| {
-                proxy_request_internal(socket, rx, tl, req_idx, req_tag);
+                proxy_request_internal(socket, rx, tripwire, tl, req_idx, req_tag);
 
                 Ok(())
             });
@@ -76,6 +77,7 @@ pub fn proxy_request(
 fn proxy_request_internal(
     socket: TcpStream,
     rx: UnboundedReceiver<WMessage>,
+    tripwire: Tripwire,
     tl: LongLiveTun,
     req_idx: u16,
     req_tag: u16,
@@ -89,17 +91,6 @@ fn proxy_request_internal(
     let rawfd = socket.as_raw_fd();
     let framed = TcpFramed::new(socket);
     let (sink, stream) = framed.split();
-    let (trigger, tripwire) = Tripwire::new();
-
-    {
-        if let Err(_) = tl
-            .borrow_mut()
-            .save_request_trigger(trigger, req_idx, req_tag)
-        {
-            // maybe request has been free
-            return;
-        }
-    }
 
     let tl2 = tl.clone();
     let tl3 = tl.clone();

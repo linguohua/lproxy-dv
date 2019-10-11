@@ -409,27 +409,6 @@ impl Tunnel {
     pub fn save_request_tx(
         &mut self,
         tx: UnboundedSender<WMessage>,
-        req_idx: u16,
-        req_tag: u16,
-    ) -> Result<(), ()> {
-        let requests = &mut self.requests;
-        let req_idx = req_idx as usize;
-        if req_idx >= requests.elements.len() {
-            return Err(());
-        }
-
-        let req = &mut requests.elements[req_idx];
-        if req.tag != req_tag {
-            return Err(());
-        }
-
-        req.request_tx = Some(tx);
-
-        Ok(())
-    }
-
-    pub fn save_request_trigger(
-        &mut self,
         trigger: Trigger,
         req_idx: u16,
         req_tag: u16,
@@ -446,6 +425,7 @@ impl Tunnel {
         }
 
         req.trigger = Some(trigger);
+        req.request_tx = Some(tx);
 
         Ok(())
     }
