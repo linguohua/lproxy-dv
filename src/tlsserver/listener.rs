@@ -1,4 +1,5 @@
 use crate::config::{TunCfg, DNS_PATH, TUN_PATH};
+use crate::lws::{self, LwsFramed};
 use crate::service::SubServiceCtlCmd;
 use crate::service::TunMgrStub;
 use failure::Error;
@@ -16,7 +17,6 @@ use tokio::runtime::current_thread::{self};
 use tokio_tcp::TcpListener;
 use tokio_tcp::TcpStream;
 use tokio_tls::TlsStream;
-use crate::lws::{self, LwsFramed};
 
 type WSStream = LwsFramed<TlsStream<TcpStream>>;
 type LongLive = Rc<RefCell<Listener>>;
@@ -100,15 +100,17 @@ impl Listener {
                         // handshake
                         let handshake = lws::do_server_hanshake(tls);
                         let handshake = handshake.and_then(move |(lsocket, path)| {
-                            let p = path.unwrap();
-                            info!("[Server]path:{}", p);
-                            let lstream = lws::LwsFramed::new(lsocket, None);
-                            let s = ll.clone();
-                            let mut s = s.borrow_mut();
-                            if p.contains(DNS_PATH) {
-                                s.on_accept_dns_websocket(rawfd, lstream, (*p).to_string());
-                            } else if p.contains(TUN_PATH) {
-                                s.on_accept_proxy_websocket(rawfd, lstream, (*p).to_string());
+                            if path.is_some() {
+                                let p = path.unwrap();
+                                info!("[Server]path:{}", p);
+                                let lstream = lws::LwsFramed::new(lsocket, None);
+                                let s = ll.clone();
+                                let mut s = s.borrow_mut();
+                                if p.contains(DNS_PATH) {
+                                    s.on_accept_dns_websocket(rawfd, lstream, (*p).to_string());
+                                } else if p.contains(TUN_PATH) {
+                                    s.on_accept_proxy_websocket(rawfd, lstream, (*p).to_string());
+                                }
                             }
 
                             Ok(())
