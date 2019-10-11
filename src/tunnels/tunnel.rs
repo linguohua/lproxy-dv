@@ -5,6 +5,7 @@ use byte::*;
 use futures::sync::mpsc::UnboundedSender;
 use futures::task::Task;
 use log::{error, info};
+use nix::sys::socket::IpAddr;
 use nix::sys::socket::{shutdown, Shutdown};
 use std::cell::RefCell;
 use std::net::SocketAddr;
@@ -17,7 +18,7 @@ use stream_cancel::Trigger;
 pub type LongLiveTun = Rc<RefCell<Tunnel>>;
 
 pub enum HostInfo {
-    IP(u32),
+    IP(IpAddr),
     Domain(String),
 }
 
@@ -232,10 +233,34 @@ impl Tunnel {
                     );
 
                     *offset = *offset + domain_name_len;
-                } else {
+                } else if address_type == 2 {
                     // default: Ipv4
-                    let ip = bs.read_with::<u32>(offset, LE).unwrap(); // 4 bytes
+                    let a = bs.read_with::<u8>(offset, LE).unwrap(); // 4 bytes
+                    let b = bs.read_with::<u8>(offset, LE).unwrap(); // 4 bytes
+                    let c = bs.read_with::<u8>(offset, LE).unwrap(); // 4 bytes
+                    let d = bs.read_with::<u8>(offset, LE).unwrap(); // 4 bytes
+                    let ip = IpAddr::new_v4(a, b, c, d);
+
                     host = HostInfo::IP(ip);
+                } else if address_type == 3 {
+                    let a = bs.read_with::<u16>(offset, LE).unwrap(); // 16 bytes
+                    let b = bs.read_with::<u16>(offset, LE).unwrap(); // 16 bytes
+                    let c = bs.read_with::<u16>(offset, LE).unwrap(); // 16 bytes
+                    let d = bs.read_with::<u16>(offset, LE).unwrap(); // 16 bytes
+                    let e = bs.read_with::<u16>(offset, LE).unwrap(); // 16 bytes
+                    let f = bs.read_with::<u16>(offset, LE).unwrap(); // 16 bytes
+                    let g = bs.read_with::<u16>(offset, LE).unwrap(); // 16 bytes
+                    let h = bs.read_with::<u16>(offset, LE).unwrap(); // 16 bytes
+
+                    let ip = IpAddr::new_v6(a, b, c, d, e, f, g, h);
+
+                    host = HostInfo::IP(ip);
+                } else {
+                    info!(
+                        "[Tunnel]{} tunnel recv request create failed, unknown address type:{}",
+                        self.tunnel_id, address_type
+                    );
+                    return;
                 }
 
                 // port, u16

@@ -4,7 +4,7 @@ use futures::future::Future;
 use futures::sync::mpsc::{unbounded, UnboundedReceiver};
 use log::{error, info};
 use nix::sys::socket::{shutdown, Shutdown};
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::{SocketAddr};
 use std::os::unix::io::AsRawFd;
 use std::time::Duration;
 use stream_cancel::{StreamExt, Tripwire};
@@ -28,8 +28,8 @@ pub fn proxy_request(
     }
 
     match host {
-        HostInfo::IP(ip32) => {
-            let sockaddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::from(ip32)), port);
+        HostInfo::IP(ip) => {
+            let sockaddr = SocketAddr::new(ip.to_std(), port);
             // llet sockaddr = "127.0.0.1:8001".parse().unwrap();
             info!("[Proxy] proxy request to ip:{:?}", sockaddr);
 
