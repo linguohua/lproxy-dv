@@ -233,7 +233,7 @@ impl Tunnel {
                     );
 
                     *offset = *offset + domain_name_len;
-                } else if address_type == 2 {
+                } else if address_type == 0 {
                     // default: Ipv4
                     let a = bs.read_with::<u8>(offset, LE).unwrap(); // 4 bytes
                     let b = bs.read_with::<u8>(offset, LE).unwrap(); // 4 bytes
@@ -242,7 +242,7 @@ impl Tunnel {
                     let ip = IpAddr::new_v4(a, b, c, d);
 
                     host = HostInfo::IP(ip);
-                } else if address_type == 3 {
+                } else if address_type == 2 {
                     let a = bs.read_with::<u16>(offset, LE).unwrap(); // 16 bytes
                     let b = bs.read_with::<u16>(offset, LE).unwrap(); // 16 bytes
                     let c = bs.read_with::<u16>(offset, LE).unwrap(); // 16 bytes
