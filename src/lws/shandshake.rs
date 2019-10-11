@@ -121,7 +121,13 @@ where
                         ));
                     }
 
-                    try_ready!(io.read_buf(bm));
+                    let n = try_ready!(io.read_buf(bm));
+                    if n == 0 {
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            "can't read completed header",
+                        ));
+                    }
 
                     if self.parse_header() {
                         // completed
