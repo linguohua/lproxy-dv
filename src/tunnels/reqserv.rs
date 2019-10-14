@@ -4,7 +4,7 @@ use futures::future::Future;
 use futures::sync::mpsc::{unbounded, UnboundedReceiver};
 use log::{error, info};
 use nix::sys::socket::{shutdown, Shutdown};
-use std::net::{SocketAddr};
+use std::net::SocketAddr;
 use std::os::unix::io::AsRawFd;
 use std::time::Duration;
 use stream_cancel::{StreamExt, Tripwire};
@@ -137,8 +137,14 @@ fn proxy_request_internal(
 
     // Wait for both futures to complete.
     let receive_fut = receive_fut
-        .map_err(|_| ())
-        .join(send_fut.map_err(|_| ()))
+        .map_err(|err| {
+            error!("[Proxy] tcp receive_fut error:{}", err);
+            ()
+        })
+        .join(send_fut.map_err(|err| {
+            error!("[Proxy] tcp receive_fut error:{}", err);
+            ()
+        }))
         .then(move |_| {
             info!("[Proxy] tcp both futures completed");
             let mut tun = tl4.borrow_mut();
