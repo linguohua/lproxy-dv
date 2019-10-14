@@ -1,10 +1,10 @@
 use super::Tunnel;
+use crate::lws::WMessage;
 use futures::sink::Sink;
 use futures::stream::{Fuse, Stream};
 use futures::{try_ready, Async, AsyncSink, Future, Poll};
 use std::cell::RefCell;
 use std::rc::Rc;
-use crate::lws::WMessage;
 
 /// Future for the `Stream::forward` combinator, which sends a stream of values
 /// to a sink and then waits until the sink has fully flushed those values.
@@ -110,7 +110,11 @@ where
         loop {
             // TODO: flowctl
             if self.has_flowctl {
-                match self.tun.borrow_mut().poll_tunnel_quota_with(bytes_cosume as usize) {
+                match self
+                    .tun
+                    .borrow_mut()
+                    .poll_tunnel_quota_with(bytes_cosume as usize)
+                {
                     Err(_) => {}
                     Ok(t) => {
                         if !t {

@@ -1,9 +1,9 @@
 use super::Tunnel;
 use crate::config::{TunCfg, KEEP_ALIVE_INTERVAL};
 use failure::Error;
+use fnv::FnvHashMap as HashMap;
 use log::{debug, error, info};
 use std::cell::RefCell;
-use fnv::FnvHashMap as HashMap;
 use std::net::SocketAddr;
 use std::rc::Rc;
 use std::result::Result;
