@@ -708,8 +708,8 @@ impl Tunnel {
 
     pub fn send_ping(&mut self) -> bool {
         let ping_count = self.ping_count;
-        if ping_count > 10 {
-            return true;
+        if ping_count > 5 {
+            return false;
         }
 
         let timestamp = self.get_elapsed_milliseconds();
