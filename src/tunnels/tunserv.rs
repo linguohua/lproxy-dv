@@ -25,6 +25,15 @@ pub fn serve_websocket(wsinfo: WSStreamInfo, s: LongLiveTM) {
     }
 
     let quota_per_second_in_kbytes = find_usize_from_query_string(&wsinfo.path, "limit=");
+    let token_str = find_str_from_query_string(&wsinfo.path, "tok=");
+    let uuidof = crate::token::token_decode(&token_str);
+    let uuid;
+    if uuidof.is_err() {
+        info!("[tunserv] decode token error:{}", uuidof.err().unwrap());
+        uuid = String::default();
+    } else {
+        uuid = uuidof.unwrap();
+    }
 
     // Create a channel for our stream, which other sockets will use to
     // send us messages. Then register our address with the stream to send
@@ -41,7 +50,9 @@ pub fn serve_websocket(wsinfo: WSStreamInfo, s: LongLiveTM) {
         tunnel_cap,
         tunnel_req_quota,
         quota_per_second_in_kbytes,
+        uuid,
     );
+
     if let Err(_) = rf.on_tunnel_created(t.clone()) {
         // DROP all
         return;
@@ -102,4 +113,23 @@ fn find_usize_from_query_string(path: &str, key: &str) -> usize {
     }
 
     0
+}
+
+fn find_str_from_query_string(path: &str, key: &str) -> String {
+    if let Some(pos1) = path.find("?") {
+        let substr = &path[pos1 + 1..];
+        if let Some(pos2) = substr.find(key) {
+            let param_str: &str;
+            let substr = &substr[(pos2 + key.len())..];
+            if let Some(pos3) = substr.find("&") {
+                param_str = &substr[..pos3];
+            } else {
+                param_str = substr;
+            }
+
+            return param_str.to_string();
+        }
+    }
+
+    String::default()
 }

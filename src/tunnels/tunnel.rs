@@ -48,6 +48,8 @@ pub struct Tunnel {
     quota_per_second_in_kbytes: usize,
     pub wait_task: Option<Task>,
     req_quota: u32,
+
+    uuid: String,
 }
 
 impl Tunnel {
@@ -59,15 +61,17 @@ impl Tunnel {
         cap: usize,
         req_quota: u32,
         quota_per_second_in_kbytes: usize,
+        uuid: String,
     ) -> LongLiveTun {
         info!(
-            "[Tunnel]new Tunnel, idx:{}, cap:{}, dns:{:?}, flowctl enable:{}, kbytes per second:{}, quota:{}",
+            "[Tunnel]new Tunnel, idx:{}, cap:{}, dns:{:?}, flowctl enable:{}, kbytes per second:{}, quota:{}, uuid:{}",
             tid,
             cap,
             dns_server_addr,
             quota_per_second_in_kbytes > 0,
             quota_per_second_in_kbytes,
-            req_quota
+            req_quota,
+            uuid
         );
 
         let size = 5;
@@ -108,6 +112,7 @@ impl Tunnel {
             quota_per_second_in_kbytes,
             wait_task: None,
             req_quota,
+            uuid,
         }))
     }
 
@@ -279,7 +284,7 @@ impl Tunnel {
                 let offset = &mut 0;
                 let quota_new = bs.read_with::<u16>(offset, LE).unwrap();
 
-                self.flowctl_quota_increase(req_idx, req_tag, quota_new);
+                self.flowctl_req_quota_increase(req_idx, req_tag, quota_new);
             }
             _ => {
                 error!(
@@ -373,9 +378,10 @@ impl Tunnel {
         reqs.clear_all();
 
         info!(
-            "[Tunnel]{} tunnel live duration {} minutes",
+            "[Tunnel]{} tunnel live duration {} minutes, uuid:{}",
             self.tunnel_id,
-            self.time.elapsed().as_secs() / 60
+            self.time.elapsed().as_secs() / 60,
+            self.uuid
         );
 
         if self.wait_task.is_some() {
@@ -548,14 +554,14 @@ impl Tunnel {
             }
             _ => {
                 // info!("[Tunnel]unbounded_send request msg, req_idx:{}", req_idx);
-                self.flowctl_quota_decrease(req_idx);
+                self.flowctl_req_quota_decrease(req_idx);
             }
         }
 
         true
     }
 
-    fn flowctl_quota_decrease(&mut self, req_idx: u16) {
+    fn flowctl_req_quota_decrease(&mut self, req_idx: u16) {
         let requests = &mut self.requests;
         let req_idx2 = req_idx as usize;
         let req = &mut requests.elements[req_idx2];
@@ -565,7 +571,7 @@ impl Tunnel {
         }
     }
 
-    pub fn flowctl_quota_increase(&mut self, req_idx: u16, req_tag: u16, quota: u16) {
+    pub fn flowctl_req_quota_increase(&mut self, req_idx: u16, req_tag: u16, quota: u16) {
         // check req valid
         if !self.check_req_valid(req_idx, req_tag) {
             return;
