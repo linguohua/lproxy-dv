@@ -1,5 +1,5 @@
 use super::Tunnel;
-use crate::config::{TunCfg, KEEP_ALIVE_INTERVAL};
+use crate::config::{ServerCfg, KEEP_ALIVE_INTERVAL};
 use failure::Error;
 use fnv::FnvHashMap as HashMap;
 use log::{debug, error, info};
@@ -26,7 +26,7 @@ pub struct TunMgr {
 }
 
 impl TunMgr {
-    pub fn new(cfg: &TunCfg, dns: bool) -> LongLive {
+    pub fn new(cfg: &ServerCfg, dns: bool) -> LongLive {
         let dns_server_addr;
         if dns {
             // if dns_server_addr invalid, panic

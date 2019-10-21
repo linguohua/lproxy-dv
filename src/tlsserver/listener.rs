@@ -1,4 +1,4 @@
-use crate::config::{TunCfg, DNS_PATH, TUN_PATH};
+use crate::config::{ServerCfg, DNS_PATH, TUN_PATH};
 use crate::lws::{self, LwsFramed};
 use crate::service::SubServiceCtlCmd;
 use crate::service::TunMgrStub;
@@ -39,7 +39,7 @@ pub struct Listener {
 }
 
 impl Listener {
-    pub fn new(cfg: &TunCfg, dns_tmstub: Vec<TunMgrStub>, tmstub: Vec<TunMgrStub>) -> LongLive {
+    pub fn new(cfg: &ServerCfg, dns_tmstub: Vec<TunMgrStub>, tmstub: Vec<TunMgrStub>) -> LongLive {
         Rc::new(RefCell::new(Listener {
             dns_tmstub,
             tmstub,

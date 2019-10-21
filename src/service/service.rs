@@ -39,16 +39,16 @@ pub struct Service {
     state: u8,
     subservices: Vec<SubServiceCtl>,
     ins_tx: Option<TxType>,
-    tuncfg: Option<std::sync::Arc<config::TunCfg>>,
+    tuncfg: Option<std::sync::Arc<config::ServerCfg>>,
     instruction_trigger: Option<Trigger>,
 }
 
 impl Service {
-    pub fn new() -> LongLive {
+    pub fn new(cfg: config::ServerCfg) -> LongLive {
         Rc::new(RefCell::new(Service {
             subservices: Vec::new(),
             ins_tx: None,
-            tuncfg: None,
+            tuncfg: Some(std::sync::Arc::new(cfg)),
             instruction_trigger: None,
             state: 0,
         }))
@@ -77,8 +77,6 @@ impl Service {
                 });
 
             self.save_tx(Some(tx));
-            let cfg = config::TunCfg::new();
-            self.save_cfg(cfg);
             self.fire_instruction(Instruction::StartSubServices);
 
             current_thread::spawn(fut);
@@ -185,10 +183,6 @@ impl Service {
 
     fn save_tx(&mut self, tx: Option<TxType>) {
         self.ins_tx = tx;
-    }
-
-    fn save_cfg(&mut self, cfg: config::TunCfg) {
-        self.tuncfg = Some(std::sync::Arc::new(cfg));
     }
 
     fn save_instruction_trigger(&mut self, trigger: Trigger) {

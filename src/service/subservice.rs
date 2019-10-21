@@ -1,4 +1,4 @@
-use crate::config::TunCfg;
+use crate::config::ServerCfg;
 use crate::tlsserver::{Listener, WSStreamInfo};
 use crate::tunnels;
 use futures::future::lazy;
@@ -39,7 +39,7 @@ pub struct TunMgrStub {
 }
 
 fn start_listener(
-    cfg: Arc<TunCfg>,
+    cfg: Arc<ServerCfg>,
     r_tx: futures::Complete<bool>,
     dnstmsstubs: Vec<TunMgrStub>,
     tmstubs: Vec<TunMgrStub>,
@@ -95,7 +95,11 @@ fn start_listener(
     }
 }
 
-fn start_one_tunmgr(cfg: Arc<TunCfg>, r_tx: futures::Complete<bool>, dns: bool) -> SubServiceCtl {
+fn start_one_tunmgr(
+    cfg: Arc<ServerCfg>,
+    r_tx: futures::Complete<bool>,
+    dns: bool,
+) -> SubServiceCtl {
     let (tx, rx) = unbounded();
     let handler = std::thread::spawn(move || {
         let mut rt = Runtime::new().unwrap();
@@ -157,7 +161,7 @@ fn to_future(
 type SubsctlVec = Rc<RefCell<Vec<SubServiceCtl>>>;
 
 fn start_tunmgr(
-    cfg: std::sync::Arc<TunCfg>,
+    cfg: std::sync::Arc<ServerCfg>,
     dns: bool,
 ) -> impl Future<Item = SubsctlVec, Error = ()> {
     let cpus;
@@ -193,7 +197,9 @@ fn start_tunmgr(
     fut
 }
 
-pub fn start_subservice(cfg: std::sync::Arc<TunCfg>) -> impl Future<Item = SubsctlVec, Error = ()> {
+pub fn start_subservice(
+    cfg: std::sync::Arc<ServerCfg>,
+) -> impl Future<Item = SubsctlVec, Error = ()> {
     let cfg2 = cfg.clone();
 
     // start tunmgr first

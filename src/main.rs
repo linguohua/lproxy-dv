@@ -19,20 +19,40 @@ fn main() {
     config::log_init().unwrap();
     let args: Vec<String> = env::args().collect();
     // println!("{:?}", args);
+    let mut filepath = String::default();
     if args.len() > 1 {
         let s = args.get(1).unwrap();
         if s == "-v" {
             println!("{}", VERSION);
             std::process::exit(0);
+        } else if s == "-c" {
+            if args.len() > 2 {
+                let argstr = args.get(2).unwrap();
+                filepath = argstr.to_string();
+            }
         }
     }
 
-    info!("try to start lproxy-dv server..");
-    let mut rt = Runtime::new().unwrap();
-    // let handle = rt.handle();
+    if filepath.len() < 1 {
+        println!("please specify config file path with -c");
+        std::process::exit(1);
+    }
 
-    let l = lazy(|| {
-        let s = Service::new();
+    info!("try to start lproxy-dv server, ver:{}", VERSION);
+
+    // let handle = rt.handle();
+    let tuncfg = match config::ServerCfg::load_from_file(&filepath) {
+        Err(e) => {
+            println!("load config file error: {}", e);
+            std::process::exit(1);
+        }
+        Ok(t) => t,
+    };
+
+    let mut rt = Runtime::new().unwrap();
+
+    let l = lazy(move || {
+        let s = Service::new(tuncfg);
         s.borrow_mut().start(s.clone());
 
         let wait_signal = Signals::new(&[signal_hook::SIGUSR1, signal_hook::SIGUSR2])
