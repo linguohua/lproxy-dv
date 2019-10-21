@@ -220,6 +220,13 @@ impl Service {
     }
 
     fn save_etcd_cfg(&mut self, etcdcfg: config::EtcdConfig) {
+        self.etcdcfg = Some(std::sync::Arc::new(etcdcfg));
+        self.build_grpc_client();
+    }
+
+    fn build_grpc_client(&mut self) {
+        let etcdcfg = self.etcdcfg.as_ref().unwrap();
+
         if etcdcfg.hub_grpc_addr.len() > 0 {
             info!(
                 "[Service] save_etcd_cfg, build grpc client to:{}",
@@ -231,9 +238,9 @@ impl Service {
             let client = myrpc::BandwidthReportClient::new(channel);
 
             self.grpc_client = Some(client);
+        } else {
+            self.grpc_client = None;
         }
-
-        self.etcdcfg = Some(std::sync::Arc::new(etcdcfg));
     }
 
     fn do_etcd_monitor(s: LongLive) {
@@ -307,6 +314,7 @@ impl Service {
     }
 
     fn do_flow_report(s: LongLive) {
+        let s1 = s.clone();
         let mut rf = s.borrow_mut();
 
         let flow_map = &rf.flow_map;
@@ -345,8 +353,17 @@ impl Service {
 
                         Ok(())
                     })
-                    .map_err(|e| {
+                    .map_err(move |e| {
                         error!("[Service]do_flow_report, grpc error:{}", e);
+                        match e {
+                            grpcio::Error::RpcFailure(s) => {
+                                if s.status == grpcio::RpcStatusCode::Unavailable {
+                                    s1.borrow_mut().build_grpc_client();
+                                }
+                            }
+                            _ => {}
+                        }
+
                         ()
                     });
 
