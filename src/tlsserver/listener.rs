@@ -69,6 +69,13 @@ impl Listener {
         self.listener_trigger = None;
     }
 
+    pub fn update_etcd_cfg(&mut self, etcdcfg: &EtcdConfig) {
+        info!("[Server] listener update update_etcd_cfg");
+
+        self.tun_path = etcdcfg.tun_path.to_string();
+        self.dns_tun_path = etcdcfg.dns_tun_path.to_string();
+    }
+
     fn start_server(&mut self, ll: LongLive) -> Result<(), Error> {
         // Bind the server's socket
         let addr = self.listen_addr.parse()?;

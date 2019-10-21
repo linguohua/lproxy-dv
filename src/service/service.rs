@@ -11,7 +11,7 @@ const STATE_STOPPED: u8 = 0;
 const STATE_STARTING: u8 = 1;
 const STATE_RUNNING: u8 = 2;
 const STATE_STOPPING: u8 = 3;
-use super::SubServiceCtl;
+use super::{SubServiceCtl, SubServiceCtlCmd, SubServiceType};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -151,6 +151,8 @@ impl Service {
 
                 let mut rf = s2.borrow_mut();
                 rf.save_etcd_cfg(etcdcfg);
+
+                rf.notify_listener_update_etcdcfg();
                 // re-monitor
                 rf.fire_instruction(Instruction::MonitorEtcdConfig);
 
@@ -168,6 +170,27 @@ impl Service {
             });
 
         current_thread::spawn(fut);
+    }
+
+    fn notify_listener_update_etcdcfg(&self) {
+        for ss in self.subservices.iter() {
+            match ss.sstype {
+                SubServiceType::Listener => {
+                    if ss.ctl_tx.is_some() {
+                        let cmd =
+                            SubServiceCtlCmd::UpdateEtcdCfg(self.etcdcfg.as_ref().unwrap().clone());
+                        match ss.ctl_tx.as_ref().unwrap().unbounded_send(cmd) {
+                            Err(e) => {
+                                error!("[Service] send update etcdcfg to listener failed:{}", e);
+                            }
+                            _ => {}
+                        }
+                        return;
+                    }
+                }
+                _ => {}
+            }
+        }
     }
 
     fn save_etcd_cfg(&mut self, etcdcfg: config::EtcdConfig) {

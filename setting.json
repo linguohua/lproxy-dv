@@ -3,7 +3,7 @@
     "listen_addr": "0.0.0.0:8080",
     "dns_server_addr": "1.1.1.1:53",
     "external_addr": "192.168.1.121:8080",
-    "etcd_addr": "",
+    "etcd_addr": "https://127.0.0.1:2379",
     "etcd_user": "root",
     "etcd_password": "123456",
     "pkcs12_password": "123456",

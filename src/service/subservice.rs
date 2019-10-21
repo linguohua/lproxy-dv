@@ -16,6 +16,12 @@ use tokio::runtime::current_thread::{self, Runtime};
 pub enum SubServiceCtlCmd {
     Stop,
     TcpTunnel(WSStreamInfo),
+    UpdateEtcdCfg(Arc<EtcdConfig>),
+}
+
+pub enum SubServiceType {
+    Listener,
+    TunMgr,
 }
 
 impl fmt::Display for SubServiceCtlCmd {
@@ -24,6 +30,7 @@ impl fmt::Display for SubServiceCtlCmd {
         match self {
             SubServiceCtlCmd::Stop => s = "Stop",
             SubServiceCtlCmd::TcpTunnel(_) => s = "TcpTunnel",
+            SubServiceCtlCmd::UpdateEtcdCfg(_) => s = "UpdateEtcdCfg",
         }
         write!(f, "({})", s)
     }
@@ -32,6 +39,7 @@ impl fmt::Display for SubServiceCtlCmd {
 pub struct SubServiceCtl {
     pub handler: Option<std::thread::JoinHandle<()>>,
     pub ctl_tx: Option<UnboundedSender<SubServiceCtlCmd>>,
+    pub sstype: SubServiceType,
 }
 
 pub struct TunMgrStub {
@@ -73,6 +81,10 @@ fn start_listener(
                         let f = listener.clone();
                         f.borrow_mut().stop();
                     }
+                    SubServiceCtlCmd::UpdateEtcdCfg(cfg) => {
+                        let f = listener.clone();
+                        f.borrow_mut().update_etcd_cfg(&cfg);
+                    }
                     _ => {
                         error!("[SubService]listener unknown ctl cmd:{}", cmd);
                     }
@@ -93,6 +105,7 @@ fn start_listener(
     SubServiceCtl {
         handler: Some(handler),
         ctl_tx: Some(tx),
+        sstype: SubServiceType::Listener,
     }
 }
 
@@ -125,9 +138,10 @@ fn start_one_tunmgr(
                     }
                     SubServiceCtlCmd::TcpTunnel(t) => {
                         tunnels::serve_websocket(t, tunmgr.clone());
-                    } // _ => {
-                      //     error!("[SubService]tunmgr unknown ctl cmd:{}", cmd);
-                      // }
+                    }
+                    _ => {
+                        error!("[SubService]tunmgr unknown ctl cmd:{}", cmd);
+                    }
                 }
 
                 Ok(())
@@ -145,6 +159,7 @@ fn start_one_tunmgr(
     SubServiceCtl {
         handler: Some(handler),
         ctl_tx: Some(tx),
+        sstype: SubServiceType::TunMgr,
     }
 }
 
