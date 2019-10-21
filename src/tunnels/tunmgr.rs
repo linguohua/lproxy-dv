@@ -25,6 +25,7 @@ pub struct TunMgr {
     keepalive_trigger: Option<Trigger>,
     discarded: bool,
     ins_tx: TxType,
+    pub token_key: String,
 }
 
 impl TunMgr {
@@ -37,6 +38,7 @@ impl TunMgr {
             dns_server_addr = None;
         }
 
+        let token_key = cfg.token_key.to_string();
         Rc::new(RefCell::new(TunMgr {
             is_dns_tun: dns,
             tunnel_id: 0,
@@ -45,6 +47,7 @@ impl TunMgr {
             discarded: false,
             dns_server_addr,
             ins_tx,
+            token_key,
         }))
     }
 

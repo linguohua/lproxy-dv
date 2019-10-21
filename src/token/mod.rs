@@ -7,9 +7,8 @@ type AesCfb = Cfb<Aes128>;
 use cfb_mode::stream_cipher::{NewStreamCipher, StreamCipher};
 
 const TOKEN_TIMEOUT: u64 = 30 * 24 * 60 * 60;
-const TOKEN_KEY: &[u8] = b"@yymmxxkk#$yzilm";
 
-fn decrypt(token: &str) -> Result<String> {
+fn decrypt(token: &str, token_key: &[u8]) -> Result<String> {
     let b64 = base64::decode_config(token, base64::URL_SAFE);
     if b64.is_err() {
         return Err(Error::new(
@@ -22,18 +21,18 @@ fn decrypt(token: &str) -> Result<String> {
     let iv = (&b64[0..16]).to_vec(); // block size is 16
     let buffer = &mut b64[16..];
 
-    let mut cfb = AesCfb::new_var(TOKEN_KEY, &iv[..]).unwrap();
+    let mut cfb = AesCfb::new_var(token_key, &iv[..]).unwrap();
     cfb.decrypt(buffer);
 
     Ok(String::from_utf8_lossy(buffer).to_string())
 }
 
-pub fn token_decode(token: &str) -> Result<String> {
+pub fn token_decode(token: &str, token_key: &[u8]) -> Result<String> {
     if token.len() < 1 {
         return Err(Error::new(ErrorKind::Other, "token is empty"));
     }
 
-    let uuid_with_timestamp = decrypt(token)?;
+    let uuid_with_timestamp = decrypt(token, token_key)?;
 
     let v: Vec<&str> = uuid_with_timestamp.split('@').collect();
     if v.len() != 2 {

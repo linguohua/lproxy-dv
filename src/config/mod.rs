@@ -22,6 +22,7 @@ pub struct ServerCfg {
     pub etcd_addr: String,
     pub etcd_user: String,
     pub etcd_password: String,
+    pub token_key: String,
 
     pub tun_path: String,
     pub dns_tun_path: String,
@@ -91,6 +92,11 @@ impl ServerCfg {
             None => "".to_string(),
         };
 
+        let token_key = match v["token_key"].as_str() {
+            Some(t) => t.to_string(),
+            None => "".to_string(),
+        };
+
         let servercfg = ServerCfg {
             pkcs12,
             listen_addr,
@@ -103,6 +109,7 @@ impl ServerCfg {
             etcd_password,
             tun_path,
             dns_tun_path,
+            token_key,
         };
 
         if !servercfg.is_valid() {
@@ -116,6 +123,11 @@ impl ServerCfg {
         let mut valid = true;
         if self.uuid.len() < 1 {
             println!("server cfg invalid, uuid must provided");
+            valid = false;
+        }
+
+        if self.token_key.len() < 1 {
+            println!("server cfg invalid, token_key must provided");
             valid = false;
         }
 

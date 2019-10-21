@@ -24,9 +24,13 @@ pub fn serve_websocket(wsinfo: WSStreamInfo, s: LongLiveTM) {
         tunnel_req_quota = std::u32::MAX;
     }
 
+    let s2 = s.clone();
+    let mut rf = s.borrow_mut();
+    let token_key = rf.token_key.as_bytes();
+
     let quota_per_second_in_kbytes = find_usize_from_query_string(&wsinfo.path, "limit=");
     let token_str = find_str_from_query_string(&wsinfo.path, "tok=");
-    let uuidof = crate::token::token_decode(&token_str);
+    let uuidof = crate::token::token_decode(&token_str, token_key);
     let uuid;
     if uuidof.is_err() {
         info!("[tunserv] decode token error:{}", uuidof.err().unwrap());
@@ -40,8 +44,7 @@ pub fn serve_websocket(wsinfo: WSStreamInfo, s: LongLiveTM) {
     // data to us.
     let (tx, rx) = futures::sync::mpsc::unbounded();
     let rawfd = wsinfo.rawfd;
-    let s2 = s.clone();
-    let mut rf = s.borrow_mut();
+
     let t = Tunnel::new(
         rf.next_tunnel_id(),
         tx,

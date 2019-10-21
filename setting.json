@@ -1,13 +1,14 @@
 {
     "pkcs12": "/home/abc/identity.pfx",
+    "pkcs12_password": "123456",
     "listen_addr": "0.0.0.0:8080",
     "dns_server_addr": "1.1.1.1:53",
-    "external_addr": "192.168.1.121:8080",
+    "external_addr": "domain:8080",
     "etcd_addr": "https://127.0.0.1:2379",
     "etcd_user": "root",
     "etcd_password": "123456",
-    "pkcs12_password": "123456",
-    "uuid": "aaaaabbbbbbcccceeee",
+    "uuid": "3c38fe85-3ec5-4a35-b187-0546776f649f",
+    "token_key": "@yymmxxkk#$yzilm",
     "tun_path": "aaaaa",
     "dns_tun_path": "bbbb"
 }
