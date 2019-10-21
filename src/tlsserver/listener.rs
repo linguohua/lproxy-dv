@@ -1,4 +1,4 @@
-use crate::config::{ServerCfg, DNS_PATH, TUN_PATH};
+use crate::config::{EtcdConfig, ServerCfg};
 use crate::lws::{self, LwsFramed};
 use crate::service::SubServiceCtlCmd;
 use crate::service::TunMgrStub;
@@ -36,10 +36,17 @@ pub struct Listener {
     listen_addr: String,
     pkcs12: String,
     pkcs12_password: String,
+    tun_path: String,
+    dns_tun_path: String,
 }
 
 impl Listener {
-    pub fn new(cfg: &ServerCfg, dns_tmstub: Vec<TunMgrStub>, tmstub: Vec<TunMgrStub>) -> LongLive {
+    pub fn new(
+        cfg: &ServerCfg,
+        etcdcfg: &EtcdConfig,
+        dns_tmstub: Vec<TunMgrStub>,
+        tmstub: Vec<TunMgrStub>,
+    ) -> LongLive {
         Rc::new(RefCell::new(Listener {
             dns_tmstub,
             tmstub,
@@ -49,6 +56,8 @@ impl Listener {
             listen_addr: cfg.listen_addr.to_string(),
             pkcs12: cfg.pkcs12.to_string(),
             pkcs12_password: cfg.pkcs12_password.to_string(),
+            tun_path: etcdcfg.tun_path.to_string(),
+            dns_tun_path: etcdcfg.dns_tun_path.to_string(),
         }))
     }
 
@@ -106,9 +115,9 @@ impl Listener {
                                 let lstream = lws::LwsFramed::new(lsocket, None);
                                 let s = ll.clone();
                                 let mut s = s.borrow_mut();
-                                if p.contains(DNS_PATH) {
+                                if p.contains(&s.dns_tun_path) {
                                     s.on_accept_dns_websocket(rawfd, lstream, (*p).to_string());
-                                } else if p.contains(TUN_PATH) {
+                                } else if p.contains(&s.tun_path) {
                                     s.on_accept_proxy_websocket(rawfd, lstream, (*p).to_string());
                                 }
                             }

@@ -1,12 +1,16 @@
 mod logsimple;
 pub use logsimple::*;
+mod etcdcfg;
+pub use etcdcfg::*;
+
 use std::fs::File;
-use std::io::{Read, Result};
+use std::io::{Error, ErrorKind, Read, Result};
 
 pub const KEEP_ALIVE_INTERVAL: u64 = 15 * 1000;
+pub const SERVICE_MONITOR_INTERVAL: u64 = 15 * 1000;
 
-pub const TUN_PATH: &str = "/tunxKMZ2oFFxixut7cO4nI1Q8pNqNHjGfvobrFo8KFyKDS1OLbmGKgRMuK2poadMJbr";
-pub const DNS_PATH: &str = "/dnsrbNCD66xjS3YC41cLTbRRxDz7pKCv4ylHpJHTkXzkO5mCoEvqgSTEPqYfLuJO425";
+// pub const TUN_PATH: &str = "/tunxKMZ2oFFxixut7cO4nI1Q8pNqNHjGfvobrFo8KFyKDS1OLbmGKgRMuK2poadMJbr";
+// pub const DNS_PATH: &str = "/dnsrbNCD66xjS3YC41cLTbRRxDz7pKCv4ylHpJHTkXzkO5mCoEvqgSTEPqYfLuJO425";
 
 pub struct ServerCfg {
     pub pkcs12: String,
@@ -15,6 +19,12 @@ pub struct ServerCfg {
     pub dns_server_addr: String,
     pub uuid: String,
     pub external_addr: String,
+    pub etcd_addr: String,
+    pub etcd_user: String,
+    pub etcd_password: String,
+
+    pub tun_path: String,
+    pub dns_tun_path: String,
 }
 
 impl ServerCfg {
@@ -56,15 +66,77 @@ impl ServerCfg {
             None => "".to_string(),
         };
 
-        let tuncfg = ServerCfg {
+        let etcd_addr = match v["etcd_addr"].as_str() {
+            Some(t) => t.to_string(),
+            None => "".to_string(),
+        };
+
+        let etcd_user = match v["etcd_user"].as_str() {
+            Some(t) => t.to_string(),
+            None => "".to_string(),
+        };
+
+        let etcd_password = match v["etcd_password"].as_str() {
+            Some(t) => t.to_string(),
+            None => "".to_string(),
+        };
+
+        let tun_path = match v["tun_path"].as_str() {
+            Some(t) => t.to_string(),
+            None => "".to_string(),
+        };
+
+        let dns_tun_path = match v["dns_tun_path"].as_str() {
+            Some(t) => t.to_string(),
+            None => "".to_string(),
+        };
+
+        let servercfg = ServerCfg {
             pkcs12,
             listen_addr,
             pkcs12_password,
             dns_server_addr,
             uuid,
             external_addr,
+            etcd_addr,
+            etcd_user,
+            etcd_password,
+            tun_path,
+            dns_tun_path,
         };
 
-        Ok(tuncfg)
+        if !servercfg.is_valid() {
+            return Err(Error::new(ErrorKind::Other, "server cfg is invalid"));
+        }
+
+        Ok(servercfg)
+    }
+
+    fn is_valid(&self) -> bool {
+        let mut valid = true;
+        if self.uuid.len() < 1 {
+            println!("server cfg invalid, uuid must provided");
+            valid = false;
+        }
+
+        if self.etcd_addr.len() > 0 {
+            if !self.etcd_addr.starts_with("https://") {
+                println!("server cfg invalid, etcd server addr must begin with https");
+                valid = false;
+            }
+        } else {
+            // if no etcd_addr, the config file must provide tun path, dns tun path
+            if self.tun_path.len() < 1 {
+                println!("server cfg invalid, must provide tun_path");
+                valid = false;
+            }
+
+            if self.dns_tun_path.len() < 1 {
+                println!("server cfg invalid, must provide dns_tun_path");
+                valid = false;
+            }
+        }
+
+        return valid;
     }
 }

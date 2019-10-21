@@ -1,4 +1,4 @@
-use crate::config::ServerCfg;
+use crate::config::{EtcdConfig, ServerCfg};
 use crate::tlsserver::{Listener, WSStreamInfo};
 use crate::tunnels;
 use futures::future::lazy;
@@ -40,6 +40,7 @@ pub struct TunMgrStub {
 
 fn start_listener(
     cfg: Arc<ServerCfg>,
+    etcdcfg: Arc<EtcdConfig>,
     r_tx: futures::Complete<bool>,
     dnstmsstubs: Vec<TunMgrStub>,
     tmstubs: Vec<TunMgrStub>,
@@ -54,7 +55,7 @@ fn start_listener(
     let handler = std::thread::spawn(move || {
         let mut rt = Runtime::new().unwrap();
         let fut = lazy(move || {
-            let listener = Listener::new(&cfg, dnstmsstubs, tmstubs);
+            let listener = Listener::new(&cfg, &etcdcfg, dnstmsstubs, tmstubs);
             // thread code
             if let Err(e) = listener.borrow_mut().init(listener.clone()) {
                 error!("[SubService]listener start failed:{}", e);
@@ -199,6 +200,7 @@ fn start_tunmgr(
 
 pub fn start_subservice(
     cfg: std::sync::Arc<ServerCfg>,
+    etcdcfg: Arc<EtcdConfig>,
 ) -> impl Future<Item = SubsctlVec, Error = ()> {
     let cfg2 = cfg.clone();
 
@@ -258,7 +260,7 @@ pub fn start_subservice(
         let v2 = v.clone();
         to_future(
             rx,
-            start_listener(cfg2.clone(), tx, dns_sss_vec, tcp_sss_vec),
+            start_listener(cfg2.clone(), etcdcfg, tx, dns_sss_vec, tcp_sss_vec),
         )
         .and_then(|ctl| {
             v.borrow_mut().push(ctl);
