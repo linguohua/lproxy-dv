@@ -7,7 +7,7 @@ use std::fs::File;
 use std::io::{Error, ErrorKind, Read, Result};
 
 pub const KEEP_ALIVE_INTERVAL: u64 = 15 * 1000;
-pub const SERVICE_MONITOR_INTERVAL: u64 = 15 * 1000;
+pub const SERVICE_MONITOR_INTERVAL: u64 = 30 * 1000;
 
 // pub const TUN_PATH: &str = "/tunxKMZ2oFFxixut7cO4nI1Q8pNqNHjGfvobrFo8KFyKDS1OLbmGKgRMuK2poadMJbr";
 // pub const DNS_PATH: &str = "/dnsrbNCD66xjS3YC41cLTbRRxDz7pKCv4ylHpJHTkXzkO5mCoEvqgSTEPqYfLuJO425";

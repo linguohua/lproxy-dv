@@ -129,6 +129,9 @@ impl TunMgr {
             tun.recv_bytes_counter = 0;
 
             let uuid = &tun.uuid;
+            if uuid.len() < 1 {
+                continue;
+            }
 
             match map.get_mut(uuid) {
                 Some(ref mut t) => {

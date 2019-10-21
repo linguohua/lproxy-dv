@@ -1,4 +1,4 @@
-use super::ServerCfg;
+use super::{ServerCfg, SERVICE_MONITOR_INTERVAL};
 use etcd::kv::{self, KeyValueInfo, WatchError, WatchOptions};
 use etcd::Error;
 use etcd::{Client, Response};
@@ -123,8 +123,9 @@ pub fn etcd_write_instance_data(
     let dir = format!("{}/{}", ETCD_CFG_DV_INSTANCE_ROOT, uuid);
     let key_address = format!("{}/address", dir);
     let key_value = server_cfg.external_addr.to_string();
-    kv::set(&client, &key_address, &key_value, None)
-        .and_then(move |_| kv::update_dir(&client, &dir, Some(30)).and_then(move |_| Ok(())))
+    kv::set(&client, &key_address, &key_value, None).and_then(move |_| {
+        kv::update_dir(&client, &dir, Some(SERVICE_MONITOR_INTERVAL * 2)).and_then(move |_| Ok(()))
+    })
 }
 
 pub fn etcd_update_instance_ttl(
@@ -143,5 +144,5 @@ pub fn etcd_update_instance_ttl(
 
     let uuid = &server_cfg.uuid;
     let dir = format!("{}/{}", ETCD_CFG_DV_INSTANCE_ROOT, uuid);
-    kv::update_dir(&client, &dir, Some(30)).and_then(|_| Ok(()))
+    kv::update_dir(&client, &dir, Some(SERVICE_MONITOR_INTERVAL * 2)).and_then(|_| Ok(()))
 }

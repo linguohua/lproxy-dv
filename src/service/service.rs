@@ -221,6 +221,10 @@ impl Service {
 
     fn save_etcd_cfg(&mut self, etcdcfg: config::EtcdConfig) {
         if etcdcfg.hub_grpc_addr.len() > 0 {
+            info!(
+                "[Service] save_etcd_cfg, build grpc client to:{}",
+                etcdcfg.hub_grpc_addr
+            );
             let cre = ChannelCredentialsBuilder::new().build();
             let e = Arc::new(Environment::new(1));
             let channel = ChannelBuilder::new(e).secure_connect(&etcdcfg.hub_grpc_addr, cre);
@@ -335,7 +339,10 @@ impl Service {
             Ok(async_receiver) => {
                 let fut = async_receiver
                     .and_then(|rsp| {
-                        info!("[Service]do_flow_report, ok:{}", rsp.code);
+                        if rsp.code != 0 {
+                            error!("[Service]do_flow_report, error, server code:{}", rsp.code);
+                        }
+
                         Ok(())
                     })
                     .map_err(|e| {
@@ -352,7 +359,7 @@ impl Service {
     }
 
     fn do_bandwidth_merge(s: LongLive, mut bwm: BandwidthReportMap) {
-        info!("[Service]do_bandwidth_merge, len:{}", bwm.len());
+        // info!("[Service]do_bandwidth_merge, len:{}", bwm.len());
         let mut rf = s.borrow_mut();
         for (uuid, t) in bwm.drain() {
             match rf.flow_map.get_mut(&uuid) {
