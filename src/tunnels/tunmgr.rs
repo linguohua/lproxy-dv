@@ -1,5 +1,6 @@
 use super::Tunnel;
 use crate::config::{ServerCfg, KEEP_ALIVE_INTERVAL};
+use crate::service::{BandwidthReport, BandwidthReportMap, Instruction, TxType};
 use failure::Error;
 use fnv::FnvHashMap as HashMap;
 use log::{debug, error, info};
@@ -23,10 +24,11 @@ pub struct TunMgr {
     tunnels_map: HashMap<usize, Rc<RefCell<Tunnel>>>,
     keepalive_trigger: Option<Trigger>,
     discarded: bool,
+    ins_tx: TxType,
 }
 
 impl TunMgr {
-    pub fn new(cfg: &ServerCfg, dns: bool) -> LongLive {
+    pub fn new(cfg: &ServerCfg, ins_tx: TxType, dns: bool) -> LongLive {
         let dns_server_addr;
         if dns {
             // if dns_server_addr invalid, panic
@@ -42,6 +44,7 @@ impl TunMgr {
             keepalive_trigger: None,
             discarded: false,
             dns_server_addr,
+            ins_tx,
         }))
     }
 
@@ -106,7 +109,55 @@ impl TunMgr {
             return;
         }
 
+        self.collect_flow_and_report();
         self.send_pings();
+    }
+
+    fn collect_flow_and_report(&mut self) {
+        let tunnels = &self.tunnels_map;
+        if tunnels.len() < 1 {
+            return;
+        }
+
+        let mut map: BandwidthReportMap = HashMap::default();
+        for (_, t) in tunnels.iter() {
+            let mut tun = t.borrow_mut();
+            let send_bytes_counter = tun.send_bytes_counter;
+            let recv_bytes_counter = tun.recv_bytes_counter;
+            // clear
+            tun.send_bytes_counter = 0;
+            tun.recv_bytes_counter = 0;
+
+            let uuid = &tun.uuid;
+
+            match map.get_mut(uuid) {
+                Some(ref mut t) => {
+                    t.send = t.send + send_bytes_counter;
+                    t.recv = t.recv + recv_bytes_counter;
+                }
+                None => {
+                    let bw = BandwidthReport {
+                        send: send_bytes_counter,
+                        recv: recv_bytes_counter,
+                    };
+                    map.insert(uuid.to_string(), bw);
+                }
+            }
+        }
+
+        if map.len() > 0 {
+            // send to service
+            let ins = Instruction::ReportBandwidth(map);
+            match self.ins_tx.unbounded_send(ins) {
+                Err(e) => {
+                    error!(
+                        "[TunMgr]collect_flow_and_report, unbounded_send failed:{}",
+                        e
+                    );
+                }
+                _ => {}
+            }
+        }
     }
 
     fn quota_reset(&mut self) {

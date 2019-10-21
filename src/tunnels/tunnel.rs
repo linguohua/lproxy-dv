@@ -49,7 +49,10 @@ pub struct Tunnel {
     pub wait_task: Option<Task>,
     req_quota: u32,
 
-    uuid: String,
+    pub uuid: String,
+
+    pub recv_bytes_counter: u64,
+    pub send_bytes_counter: u64,
 }
 
 impl Tunnel {
@@ -113,6 +116,8 @@ impl Tunnel {
             wait_task: None,
             req_quota,
             uuid,
+            recv_bytes_counter: 0,
+            send_bytes_counter: 0,
         }))
     }
 
@@ -180,6 +185,7 @@ impl Tunnel {
                         //     "[Tunnel]{} proxy request msg, {}:{}",
                         //     self.tunnel_id, req_idx, req_tag
                         // );
+                        self.send_bytes_counter = self.send_bytes_counter + vec.len() as u64;
                         let wmsg = WMessage::new(vec, (3 + THEADER_SIZE) as u16);
                         let result = tx.unbounded_send(wmsg);
                         match result {
@@ -536,6 +542,7 @@ impl Tunnel {
         let msg_header = &mut vec[3..];
         th.write_to(msg_header);
 
+        self.recv_bytes_counter = self.recv_bytes_counter + vec.len() as u64;
         // info!(
         //     "[Tunnel]{} send request response to peer, len:{}",
         //     self.tunnel_id,

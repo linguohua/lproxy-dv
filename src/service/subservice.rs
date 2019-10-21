@@ -112,13 +112,14 @@ fn start_listener(
 fn start_one_tunmgr(
     cfg: Arc<ServerCfg>,
     r_tx: futures::Complete<bool>,
+    ins_tx: super::TxType,
     dns: bool,
 ) -> SubServiceCtl {
     let (tx, rx) = unbounded();
     let handler = std::thread::spawn(move || {
         let mut rt = Runtime::new().unwrap();
         let fut = lazy(move || {
-            let tunmgr = tunnels::TunMgr::new(&cfg, dns);
+            let tunmgr = tunnels::TunMgr::new(&cfg, ins_tx, dns);
             // thread code
             if let Err(e) = tunmgr.borrow_mut().init(tunmgr.clone()) {
                 error!("[SubService]tunmgr start failed:{}", e);
@@ -178,6 +179,7 @@ type SubsctlVec = Rc<RefCell<Vec<SubServiceCtl>>>;
 
 fn start_tunmgr(
     cfg: std::sync::Arc<ServerCfg>,
+    ins_tx: super::TxType,
     dns: bool,
 ) -> impl Future<Item = SubsctlVec, Error = ()> {
     let cpus;
@@ -196,10 +198,12 @@ fn start_tunmgr(
         .for_each(move |_| {
             let (tx, rx) = futures::oneshot();
             let subservices = subservices.clone();
-            to_future(rx, start_one_tunmgr(cfg.clone(), tx, dns)).and_then(move |ctl| {
-                subservices.borrow_mut().push(ctl);
-                Ok(())
-            })
+            to_future(rx, start_one_tunmgr(cfg.clone(), tx, ins_tx.clone(), dns)).and_then(
+                move |ctl| {
+                    subservices.borrow_mut().push(ctl);
+                    Ok(())
+                },
+            )
         })
         .and_then(move |_| Ok(subservices2))
         .or_else(move |_| {
@@ -216,15 +220,16 @@ fn start_tunmgr(
 pub fn start_subservice(
     cfg: std::sync::Arc<ServerCfg>,
     etcdcfg: Arc<EtcdConfig>,
+    ins_tx: super::TxType,
 ) -> impl Future<Item = SubsctlVec, Error = ()> {
     let cfg2 = cfg.clone();
 
     // start tunmgr first
-    let tunmgr_fut = start_tunmgr(cfg.clone(), false);
+    let tunmgr_fut = start_tunmgr(cfg.clone(), ins_tx.clone(), false);
 
     let dns_tunmgr_fut = tunmgr_fut.and_then(move |subservices| {
         let v = subservices.clone();
-        let fut = start_tunmgr(cfg.clone(), true)
+        let fut = start_tunmgr(cfg.clone(), ins_tx, true)
             .and_then(|sss| Ok((subservices, sss)))
             .or_else(move |_| {
                 let vec_subservices = &mut v.borrow_mut();
@@ -237,7 +242,7 @@ pub fn start_subservice(
     });
 
     // finally start listener
-    let forward_fut = dns_tunmgr_fut.and_then(move |(tcp_sss, dns_sss)| {
+    let listener_fut = dns_tunmgr_fut.and_then(move |(tcp_sss, dns_sss)| {
         let (tx, rx) = futures::oneshot();
         //let v = subservices.clone();
         let mut tcp_sss_vec = Vec::new();
@@ -290,7 +295,7 @@ pub fn start_subservice(
         })
     });
 
-    forward_fut
+    listener_fut
 }
 
 pub fn cleanup_subservices(subservices: &mut Vec<SubServiceCtl>) {

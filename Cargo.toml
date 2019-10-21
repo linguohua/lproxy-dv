@@ -44,6 +44,8 @@ base64 = "0.10.1"
 sha-1 = "0.8.1"
 aes = "0.3.2"
 cfb-mode = "0.3.2"
+grpcio = { version = "0.4.4", features = ["openssl"] }
+protobuf = "2.8.1"
 
 [dependencies.signal-hook]
 version = "0.1.10"

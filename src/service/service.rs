@@ -1,4 +1,5 @@
 use crate::config::{self, SERVICE_MONITOR_INTERVAL};
+use crate::myrpc;
 use futures::sync::mpsc::UnboundedSender;
 use log::{debug, error, info};
 use std::fmt;
@@ -12,18 +13,37 @@ const STATE_STARTING: u8 = 1;
 const STATE_RUNNING: u8 = 2;
 const STATE_STOPPING: u8 = 3;
 use super::{SubServiceCtl, SubServiceCtlCmd, SubServiceType};
+use fnv::FnvHashMap as HashMap;
+use grpcio::{ChannelBuilder, ChannelCredentialsBuilder, Environment};
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::sync::Arc;
 
 type LongLive = Rc<RefCell<Service>>;
 
-enum Instruction {
+pub struct BandwidthReport {
+    pub send: u64,
+    pub recv: u64,
+}
+
+impl BandwidthReport {
+    pub fn merge(&mut self, other: &BandwidthReport) {
+        self.send = self.send + other.send;
+        self.recv = self.recv + other.recv;
+    }
+}
+
+pub type BandwidthReportMap = HashMap<String, BandwidthReport>;
+
+pub enum Instruction {
     StartSubServices,
     Restart,
     LoadEtcdConfig,
     MonitorEtcdConfig,
     UpdateEtcdConfig,
     ServiceMonitor,
+
+    ReportBandwidth(BandwidthReportMap),
 }
 
 impl fmt::Display for Instruction {
@@ -36,12 +56,13 @@ impl fmt::Display for Instruction {
             Instruction::MonitorEtcdConfig => s = "MonitorEtcdConfig",
             Instruction::UpdateEtcdConfig => s = "UpdateEtcdConfig",
             Instruction::ServiceMonitor => s = "ServiceMonitor",
+            Instruction::ReportBandwidth(_) => s = "ReportBandwidth",
         }
         write!(f, "({})", s)
     }
 }
 
-type TxType = UnboundedSender<Instruction>;
+pub type TxType = UnboundedSender<Instruction>;
 
 pub struct Service {
     state: u8,
@@ -51,6 +72,9 @@ pub struct Service {
     instruction_trigger: Option<Trigger>,
     etcdcfg: Option<std::sync::Arc<config::EtcdConfig>>,
     monitor_trigger: Option<Trigger>,
+
+    flow_map: BandwidthReportMap,
+    grpc_client: Option<myrpc::BandwidthReportClient>,
 }
 
 impl Service {
@@ -63,6 +87,8 @@ impl Service {
             state: 0,
             etcdcfg: None,
             monitor_trigger: None,
+            flow_map: HashMap::default(),
+            grpc_client: None,
         }))
     }
 
@@ -194,6 +220,15 @@ impl Service {
     }
 
     fn save_etcd_cfg(&mut self, etcdcfg: config::EtcdConfig) {
+        if etcdcfg.hub_grpc_addr.len() > 0 {
+            let cre = ChannelCredentialsBuilder::new().build();
+            let e = Arc::new(Environment::new(1));
+            let channel = ChannelBuilder::new(e).secure_connect(&etcdcfg.hub_grpc_addr, cre);
+            let client = myrpc::BandwidthReportClient::new(channel);
+
+            self.grpc_client = Some(client);
+        }
+
         self.etcdcfg = Some(std::sync::Arc::new(etcdcfg));
     }
 
@@ -261,7 +296,74 @@ impl Service {
     }
 
     fn do_service_monitor(s: LongLive) {
-        Service::do_update_etcd_instance_ttl(s);
+        Service::do_update_etcd_instance_ttl(s.clone());
+
+        // report to grpc
+        Service::do_flow_report(s);
+    }
+
+    fn do_flow_report(s: LongLive) {
+        let mut rf = s.borrow_mut();
+
+        let flow_map = &rf.flow_map;
+        if flow_map.len() < 1 {
+            return;
+        }
+
+        if rf.grpc_client.is_none() {
+            // reset to new hashmap
+            rf.flow_map = HashMap::default();
+            return;
+        }
+
+        let mut report = myrpc::BandwidthStatistics::new();
+        let bwu = report.mut_statistics();
+
+        for (uuid, bw) in flow_map.iter() {
+            let mut bu = myrpc::BandwidthUsage::new();
+            bu.set_uuid(uuid.to_string());
+            bu.set_recv_bytes(bw.recv);
+            bu.set_send_bytes(bw.send);
+
+            bwu.push(bu);
+        }
+
+        // reset to new hashmap
+        rf.flow_map = HashMap::default();
+
+        match rf.grpc_client.as_ref().unwrap().report_async(&report) {
+            Ok(async_receiver) => {
+                let fut = async_receiver
+                    .and_then(|rsp| {
+                        info!("[Service]do_flow_report, ok:{}", rsp.code);
+                        Ok(())
+                    })
+                    .map_err(|e| {
+                        error!("[Service]do_flow_report, grpc error:{}", e);
+                        ()
+                    });
+
+                current_thread::spawn(fut);
+            }
+            Err(e) => {
+                error!("[Service]do_flow_report, grpc failed:{}", e);
+            }
+        }
+    }
+
+    fn do_bandwidth_merge(s: LongLive, mut bwm: BandwidthReportMap) {
+        info!("[Service]do_bandwidth_merge, len:{}", bwm.len());
+        let mut rf = s.borrow_mut();
+        for (uuid, t) in bwm.drain() {
+            match rf.flow_map.get_mut(&uuid) {
+                Some(ref mut exist) => {
+                    exist.merge(&t);
+                }
+                None => {
+                    rf.flow_map.insert(uuid, t);
+                }
+            }
+        }
     }
 
     pub fn stop(&mut self) {
@@ -310,6 +412,9 @@ impl Service {
             Instruction::ServiceMonitor => {
                 Service::do_service_monitor(s.clone());
             }
+            Instruction::ReportBandwidth(bw) => {
+                Service::do_bandwidth_merge(s, bw);
+            }
         }
     }
 
@@ -351,11 +456,16 @@ impl Service {
             etcdcfg = s.borrow().etcdcfg.as_ref().unwrap().clone();
         }
 
+        let ins_tx;
+        {
+            ins_tx = s.borrow().ins_tx.as_ref().unwrap().clone();
+        }
+
         let clone = s.clone();
         let clone2 = s.clone();
         let has_etcd = cfg.etcd_addr.len() > 0;
 
-        let fut = super::start_subservice(cfg, etcdcfg)
+        let fut = super::start_subservice(cfg, etcdcfg, ins_tx)
             .and_then(move |subservices| {
                 let s2 = &mut clone.borrow_mut();
                 let vec_subservices = &mut subservices.borrow_mut();
