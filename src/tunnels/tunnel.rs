@@ -65,6 +65,7 @@ impl Tunnel {
         req_quota: u32,
         quota_per_second_in_kbytes: usize,
         uuid: String,
+        is_for_dns: bool,
     ) -> LongLiveTun {
         info!(
             "[Tunnel]new Tunnel, idx:{}, cap:{}, dns:{:?}, flowctl enable:{}, kbytes per second:{}, quota:{}, uuid:{}",
@@ -79,7 +80,6 @@ impl Tunnel {
 
         let size = 5;
         let rtt_queue = vec![0; size];
-        let is_for_dns = dns_server_addr.is_some();
 
         let has_flowctl;
         let quota_of_interval;

@@ -4,11 +4,11 @@
     "listen_addr": "0.0.0.0:8080",
     "dns_server_addr": "1.1.1.1:53",
     "external_addr": "domain:8080",
-    "etcd_addr": "https://127.0.0.1:2379",
+    "etcd_addr": "",
     "etcd_user": "root",
     "etcd_password": "123456",
     "uuid": "3c38fe85-3ec5-4a35-b187-0546776f649f",
     "token_key": "@yymmxxkk#$yzilm",
-    "tun_path": "aaaaa",
-    "dns_tun_path": "bbbb"
+    "tun_path": "abc",
+    "dns_tun_path": "efg"
 }

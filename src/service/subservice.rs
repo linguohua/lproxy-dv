@@ -50,20 +50,15 @@ fn start_listener(
     cfg: Arc<ServerCfg>,
     etcdcfg: Arc<EtcdConfig>,
     r_tx: futures::Complete<bool>,
-    dnstmsstubs: Vec<TunMgrStub>,
     tmstubs: Vec<TunMgrStub>,
 ) -> SubServiceCtl {
-    info!(
-        "[SubService]start_listener, tm count:{}, dns tm count:{}",
-        tmstubs.len(),
-        dnstmsstubs.len()
-    );
+    info!("[SubService]start_listener, tm count:{}", tmstubs.len(),);
 
     let (tx, rx) = unbounded();
     let handler = std::thread::spawn(move || {
         let mut rt = Runtime::new().unwrap();
         let fut = lazy(move || {
-            let listener = Listener::new(&cfg, &etcdcfg, dnstmsstubs, tmstubs);
+            let listener = Listener::new(&cfg, &etcdcfg, tmstubs);
             // thread code
             if let Err(e) = listener.borrow_mut().init(listener.clone()) {
                 error!("[SubService]listener start failed:{}", e);
@@ -113,13 +108,12 @@ fn start_one_tunmgr(
     cfg: Arc<ServerCfg>,
     r_tx: futures::Complete<bool>,
     ins_tx: super::TxType,
-    dns: bool,
 ) -> SubServiceCtl {
     let (tx, rx) = unbounded();
     let handler = std::thread::spawn(move || {
         let mut rt = Runtime::new().unwrap();
         let fut = lazy(move || {
-            let tunmgr = tunnels::TunMgr::new(&cfg, ins_tx, dns);
+            let tunmgr = tunnels::TunMgr::new(&cfg, ins_tx);
             // thread code
             if let Err(e) = tunmgr.borrow_mut().init(tunmgr.clone()) {
                 error!("[SubService]tunmgr start failed:{}", e);
@@ -180,14 +174,8 @@ type SubsctlVec = Rc<RefCell<Vec<SubServiceCtl>>>;
 fn start_tunmgr(
     cfg: std::sync::Arc<ServerCfg>,
     ins_tx: super::TxType,
-    dns: bool,
 ) -> impl Future<Item = SubsctlVec, Error = ()> {
-    let cpus;
-    if dns {
-        cpus = 2;
-    } else {
-        cpus = num_cpus::get();
-    }
+    let cpus = num_cpus::get();
 
     let stream = iter_ok::<_, ()>(vec![0; cpus]);
     let subservices = Rc::new(RefCell::new(Vec::new()));
@@ -198,12 +186,10 @@ fn start_tunmgr(
         .for_each(move |_| {
             let (tx, rx) = futures::oneshot();
             let subservices = subservices.clone();
-            to_future(rx, start_one_tunmgr(cfg.clone(), tx, ins_tx.clone(), dns)).and_then(
-                move |ctl| {
-                    subservices.borrow_mut().push(ctl);
-                    Ok(())
-                },
-            )
+            to_future(rx, start_one_tunmgr(cfg.clone(), tx, ins_tx.clone())).and_then(move |ctl| {
+                subservices.borrow_mut().push(ctl);
+                Ok(())
+            })
         })
         .and_then(move |_| Ok(subservices2))
         .or_else(move |_| {
@@ -225,24 +211,10 @@ pub fn start_subservice(
     let cfg2 = cfg.clone();
 
     // start tunmgr first
-    let tunmgr_fut = start_tunmgr(cfg.clone(), ins_tx.clone(), false);
-
-    let dns_tunmgr_fut = tunmgr_fut.and_then(move |subservices| {
-        let v = subservices.clone();
-        let fut = start_tunmgr(cfg.clone(), ins_tx, true)
-            .and_then(|sss| Ok((subservices, sss)))
-            .or_else(move |_| {
-                let vec_subservices = &mut v.borrow_mut();
-                // WARNING: block current thread
-                cleanup_subservices(vec_subservices);
-                Err(())
-            });
-
-        fut
-    });
+    let tunmgr_fut = start_tunmgr(cfg.clone(), ins_tx.clone());
 
     // finally start listener
-    let listener_fut = dns_tunmgr_fut.and_then(move |(tcp_sss, dns_sss)| {
+    let listener_fut = tunmgr_fut.and_then(move |tcp_sss| {
         let (tx, rx) = futures::oneshot();
         //let v = subservices.clone();
         let mut tcp_sss_vec = Vec::new();
@@ -254,23 +226,9 @@ pub fn start_subservice(
             }
         }
 
-        let mut dns_sss_vec = Vec::new();
-        {
-            let ss = dns_sss.borrow();
-            for s in ss.iter() {
-                let tx = s.ctl_tx.as_ref().unwrap().clone();
-                dns_sss_vec.push(TunMgrStub { ctl_tx: tx });
-            }
-        }
-
         let mut v = Vec::new();
         {
             let mut ss = tcp_sss.borrow_mut();
-            while let Some(p) = ss.pop() {
-                v.push(p);
-            }
-
-            let mut ss = dns_sss.borrow_mut();
             while let Some(p) = ss.pop() {
                 v.push(p);
             }
@@ -278,21 +236,18 @@ pub fn start_subservice(
 
         let v = Rc::new(RefCell::new(v));
         let v2 = v.clone();
-        to_future(
-            rx,
-            start_listener(cfg2.clone(), etcdcfg, tx, dns_sss_vec, tcp_sss_vec),
-        )
-        .and_then(|ctl| {
-            v.borrow_mut().push(ctl);
+        to_future(rx, start_listener(cfg2.clone(), etcdcfg, tx, tcp_sss_vec))
+            .and_then(|ctl| {
+                v.borrow_mut().push(ctl);
 
-            Ok(v)
-        })
-        .or_else(move |_| {
-            let vec_subservices = &mut v2.borrow_mut();
-            // WARNING: block current thread
-            cleanup_subservices(vec_subservices);
-            Err(())
-        })
+                Ok(v)
+            })
+            .or_else(move |_| {
+                let vec_subservices = &mut v2.borrow_mut();
+                // WARNING: block current thread
+                cleanup_subservices(vec_subservices);
+                Err(())
+            })
     });
 
     listener_fut

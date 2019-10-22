@@ -18,7 +18,6 @@ type LongLive = Rc<RefCell<TunMgr>>;
 pub type LongLiveTM = LongLive;
 
 pub struct TunMgr {
-    pub is_dns_tun: bool,
     pub dns_server_addr: Option<SocketAddr>,
     tunnel_id: usize,
     tunnels_map: HashMap<usize, Rc<RefCell<Tunnel>>>,
@@ -29,18 +28,11 @@ pub struct TunMgr {
 }
 
 impl TunMgr {
-    pub fn new(cfg: &ServerCfg, ins_tx: TxType, dns: bool) -> LongLive {
-        let dns_server_addr;
-        if dns {
-            // if dns_server_addr invalid, panic
-            dns_server_addr = Some(cfg.dns_server_addr.parse().unwrap());
-        } else {
-            dns_server_addr = None;
-        }
+    pub fn new(cfg: &ServerCfg, ins_tx: TxType) -> LongLive {
+        let dns_server_addr = Some(cfg.dns_server_addr.parse().unwrap());
 
         let token_key = cfg.token_key.to_string();
         Rc::new(RefCell::new(TunMgr {
-            is_dns_tun: dns,
             tunnel_id: 0,
             tunnels_map: HashMap::default(),
             keepalive_trigger: None,

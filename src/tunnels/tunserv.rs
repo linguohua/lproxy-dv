@@ -26,18 +26,9 @@ pub fn serve_websocket(wsinfo: WSStreamInfo, s: LongLiveTM) {
 
     let s2 = s.clone();
     let mut rf = s.borrow_mut();
-    let token_key = rf.token_key.as_bytes();
-
     let quota_per_second_in_kbytes = find_usize_from_query_string(&wsinfo.path, "limit=");
-    let token_str = find_str_from_query_string(&wsinfo.path, "tok=");
-    let uuidof = crate::token::token_decode(&token_str, token_key);
-    let uuid;
-    if uuidof.is_err() {
-        info!("[tunserv] decode token error:{}", uuidof.err().unwrap());
-        uuid = String::default();
-    } else {
-        uuid = uuidof.unwrap();
-    }
+    let uuid = wsinfo.uuid;
+    let is_dns = wsinfo.is_dns;
 
     // Create a channel for our stream, which other sockets will use to
     // send us messages. Then register our address with the stream to send
@@ -54,6 +45,7 @@ pub fn serve_websocket(wsinfo: WSStreamInfo, s: LongLiveTM) {
         tunnel_req_quota,
         quota_per_second_in_kbytes,
         uuid,
+        is_dns,
     );
 
     if let Err(_) = rf.on_tunnel_created(t.clone()) {
@@ -62,7 +54,6 @@ pub fn serve_websocket(wsinfo: WSStreamInfo, s: LongLiveTM) {
     }
 
     let t2 = t.clone();
-    // let t3 = t.clone();
     let t4 = t.clone();
 
     // `sink` is the stream of messages going out.
@@ -118,7 +109,7 @@ fn find_usize_from_query_string(path: &str, key: &str) -> usize {
     0
 }
 
-fn find_str_from_query_string(path: &str, key: &str) -> String {
+pub fn find_str_from_query_string(path: &str, key: &str) -> String {
     if let Some(pos1) = path.find("?") {
         let substr = &path[pos1 + 1..];
         if let Some(pos2) = substr.find(key) {

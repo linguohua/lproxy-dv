@@ -2,11 +2,13 @@ use crate::config::{EtcdConfig, ServerCfg};
 use crate::lws::{self, LwsFramed};
 use crate::service::SubServiceCtlCmd;
 use crate::service::TunMgrStub;
+use crate::tunnels::find_str_from_query_string;
 use failure::Error;
 use log::{error, info};
 use native_tls::Identity;
 use std::cell::RefCell;
 use std::fs::File;
+use std::hash::{Hash, Hasher};
 use std::os::unix::io::AsRawFd;
 use std::os::unix::io::RawFd;
 use std::rc::Rc;
@@ -25,38 +27,31 @@ pub struct WSStreamInfo {
     pub ws: Option<WSStream>,
     pub path: String,
     pub rawfd: RawFd,
+    pub uuid: String,
+    pub is_dns: bool,
 }
 
 pub struct Listener {
     tmstub: Vec<TunMgrStub>,
-    dns_tmstub: Vec<TunMgrStub>,
-    tmindex: usize,
-    dns_tmindex: usize,
     listener_trigger: Option<Trigger>,
     listen_addr: String,
     pkcs12: String,
     pkcs12_password: String,
     tun_path: String,
     dns_tun_path: String,
+    token_key: String,
 }
 
 impl Listener {
-    pub fn new(
-        cfg: &ServerCfg,
-        etcdcfg: &EtcdConfig,
-        dns_tmstub: Vec<TunMgrStub>,
-        tmstub: Vec<TunMgrStub>,
-    ) -> LongLive {
+    pub fn new(cfg: &ServerCfg, etcdcfg: &EtcdConfig, tmstub: Vec<TunMgrStub>) -> LongLive {
         Rc::new(RefCell::new(Listener {
-            dns_tmstub,
             tmstub,
-            tmindex: 0,
-            dns_tmindex: 0,
             listener_trigger: None,
             listen_addr: cfg.listen_addr.to_string(),
             pkcs12: cfg.pkcs12.to_string(),
             pkcs12_password: cfg.pkcs12_password.to_string(),
             tun_path: etcdcfg.tun_path.to_string(),
+            token_key: cfg.token_key.to_string(),
             dns_tun_path: etcdcfg.dns_tun_path.to_string(),
         }))
     }
@@ -123,9 +118,9 @@ impl Listener {
                                 let s = ll.clone();
                                 let mut s = s.borrow_mut();
                                 if p.contains(&s.dns_tun_path) {
-                                    s.on_accept_dns_websocket(rawfd, lstream, (*p).to_string());
+                                    s.on_accept_proxy_websocket(rawfd, lstream, true, p);
                                 } else if p.contains(&s.tun_path) {
-                                    s.on_accept_proxy_websocket(rawfd, lstream, (*p).to_string());
+                                    s.on_accept_proxy_websocket(rawfd, lstream, false, p);
                                 }
                             }
 
@@ -152,49 +147,53 @@ impl Listener {
         Ok(())
     }
 
-    fn on_accept_dns_websocket(&mut self, rawfd: RawFd, ws: WSStream, path: String) {
-        let index = self.dns_tmindex;
-        if index >= self.dns_tmstub.len() {
-            error!("[Server]no tm to handle tcpstream");
-            return;
+    fn on_accept_proxy_websocket(
+        &mut self,
+        rawfd: RawFd,
+        ws: WSStream,
+        is_dns: bool,
+        path: String,
+    ) {
+        match self.get_uuid_from_path(&path) {
+            Ok(uuid) => {
+                let mut hasher = fnv::FnvHasher::default();
+                uuid.hash(&mut hasher);
+                let index = (hasher.finish() as usize) % self.tmstub.len();
+
+                let wsinfo = WSStreamInfo {
+                    ws: Some(ws),
+                    rawfd: rawfd,
+                    path: path,
+                    uuid,
+                    is_dns,
+                };
+
+                let tx = &self.tmstub[index];
+                let cmd = SubServiceCtlCmd::TcpTunnel(wsinfo);
+                if let Err(e) = tx.ctl_tx.unbounded_send(cmd) {
+                    error!("[Server]send req to tm failed:{}", e);
+                }
+            }
+            Err(e) => {
+                error!("[Server]tunnel no uuid provided, will be dropped:{}", e);
+            }
         }
-
-        let wsinfo = WSStreamInfo {
-            ws: Some(ws),
-            rawfd: rawfd,
-            path: path,
-        };
-
-        let tx = &self.dns_tmstub[index];
-        let cmd = SubServiceCtlCmd::TcpTunnel(wsinfo);
-        if let Err(e) = tx.ctl_tx.unbounded_send(cmd) {
-            error!("[Server]send req to tm failed:{}", e);
-        }
-
-        // move to next tm
-        self.dns_tmindex = (index + 1) % self.dns_tmstub.len();
     }
 
-    fn on_accept_proxy_websocket(&mut self, rawfd: RawFd, ws: WSStream, path: String) {
-        let index = self.tmindex;
-        if index >= self.tmstub.len() {
-            error!("[Server]no tm to handle tcpstream");
-            return;
+    fn get_uuid_from_path(&self, path: &str) -> std::io::Result<String> {
+        let token_str = find_str_from_query_string(path, "tok=");
+        let uuidof = crate::token::token_decode(&token_str, self.token_key.as_bytes());
+        let uuid;
+        if uuidof.is_err() {
+            info!("[Server] decode token error:{}", uuidof.err().unwrap());
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "no uuid provided",
+            ));
+        } else {
+            uuid = uuidof.unwrap();
         }
 
-        let wsinfo = WSStreamInfo {
-            ws: Some(ws),
-            rawfd: rawfd,
-            path: path,
-        };
-
-        let tx = &self.tmstub[index];
-        let cmd = SubServiceCtlCmd::TcpTunnel(wsinfo);
-        if let Err(e) = tx.ctl_tx.unbounded_send(cmd) {
-            error!("[Server]send req to tm failed:{}", e);
-        }
-
-        // move to next tm
-        self.tmindex = (index + 1) % self.tmstub.len();
+        Ok(uuid)
     }
 }
