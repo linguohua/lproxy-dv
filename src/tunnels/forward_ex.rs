@@ -112,7 +112,7 @@ where
             if self.has_flowctl {
                 match self
                     .tun
-                    .borrow_mut()
+                    .borrow()
                     .poll_tunnel_quota_with(bytes_cosume as usize)
                 {
                     Err(_) => {}

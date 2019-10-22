@@ -1,9 +1,7 @@
-use super::{Cmd, Reqq, THeader, THEADER_SIZE};
-use crate::config::KEEP_ALIVE_INTERVAL;
+use super::{Cmd, LongLiveUA, Reqq, THeader, THEADER_SIZE};
 use crate::lws::{RMessage, TMessage, WMessage};
 use byte::*;
 use futures::sync::mpsc::UnboundedSender;
-use futures::task::Task;
 use log::{error, info};
 use nix::sys::socket::{shutdown, IpAddr, Shutdown};
 use std::cell::RefCell;
@@ -31,10 +29,9 @@ pub struct Tunnel {
 
     time: Instant,
 
-    rtt_queue: Vec<i64>,
-    rtt_index: usize,
-    rtt_sum: i64,
-
+    // rtt_queue: Vec<i64>,
+    // rtt_index: usize,
+    // rtt_sum: i64,
     req_count: u16,
     pub requests: Reqq,
 
@@ -44,15 +41,12 @@ pub struct Tunnel {
     recv_message_size: usize,
 
     pub has_flowctl: bool,
-    quota_of_interval: usize,
-    quota_per_second_in_kbytes: usize,
-    pub wait_task: Option<Task>,
     req_quota: u32,
-
-    pub uuid: String,
 
     pub recv_bytes_counter: u64,
     pub send_bytes_counter: u64,
+
+    pub account: LongLiveUA,
 }
 
 impl Tunnel {
@@ -64,31 +58,27 @@ impl Tunnel {
         cap: usize,
         req_quota: u32,
         quota_per_second_in_kbytes: usize,
-        uuid: String,
+        account: LongLiveUA,
         is_for_dns: bool,
     ) -> LongLiveTun {
         info!(
-            "[Tunnel]new Tunnel, idx:{}, cap:{}, dns:{:?}, flowctl enable:{}, kbytes per second:{}, quota:{}, uuid:{}",
+            "[Tunnel]new Tunnel, idx:{}, cap:{}, dns:{:?}, flowctl enable:{}, kbytes per second:{}, quota:{}",
             tid,
             cap,
             dns_server_addr,
             quota_per_second_in_kbytes > 0,
             quota_per_second_in_kbytes,
             req_quota,
-            uuid
         );
 
-        let size = 5;
-        let rtt_queue = vec![0; size];
+        // let size = 5;
+        // let rtt_queue = vec![0; size];
 
         let has_flowctl;
-        let quota_of_interval;
         if quota_per_second_in_kbytes != 0 {
             has_flowctl = true;
-            quota_of_interval = quota_per_second_in_kbytes * (KEEP_ALIVE_INTERVAL as usize);
         } else {
             has_flowctl = false;
-            quota_of_interval = 0;
         }
 
         Rc::new(RefCell::new(Tunnel {
@@ -99,10 +89,9 @@ impl Tunnel {
             ping_count: 0,
             time: Instant::now(),
 
-            rtt_queue: rtt_queue,
-            rtt_index: 0,
-            rtt_sum: 0,
-
+            // rtt_queue: rtt_queue,
+            // rtt_index: 0,
+            // rtt_sum: 0,
             req_count: 0,
 
             requests: Reqq::new(cap),
@@ -111,13 +100,10 @@ impl Tunnel {
             recv_message_size: 0,
 
             has_flowctl,
-            quota_of_interval,
-            quota_per_second_in_kbytes,
-            wait_task: None,
             req_quota,
-            uuid,
             recv_bytes_counter: 0,
             send_bytes_counter: 0,
+            account,
         }))
     }
 
@@ -372,10 +358,6 @@ impl Tunnel {
 
         let in_ms = self.get_elapsed_milliseconds();
         assert!(in_ms >= timestamp, "[Tunnel]pong timestamp > now!");
-
-        let rtt = in_ms - timestamp;
-        let rtt = rtt as i64;
-        self.append_rtt(rtt);
     }
 
     pub fn on_closed(&mut self) {
@@ -384,16 +366,10 @@ impl Tunnel {
         reqs.clear_all();
 
         info!(
-            "[Tunnel]{} tunnel live duration {} minutes, uuid:{}",
+            "[Tunnel]{} tunnel live duration {} minutes",
             self.tunnel_id,
             self.time.elapsed().as_secs() / 60,
-            self.uuid
         );
-
-        if self.wait_task.is_some() {
-            let wait_task = self.wait_task.take().unwrap();
-            wait_task.notify();
-        }
     }
 
     fn get_request_tx(&self, req_idx: u16, req_tag: u16) -> Option<UnboundedSender<WMessage>> {
@@ -613,21 +589,6 @@ impl Tunnel {
         Ok(true)
     }
 
-    pub fn poll_tunnel_quota_with(&mut self, bytes_cosume: usize) -> Result<bool, ()> {
-        if self.quota_of_interval < bytes_cosume {
-            self.quota_of_interval = 0;
-        } else {
-            self.quota_of_interval -= bytes_cosume;
-        }
-
-        if self.quota_of_interval == 0 {
-            self.wait_task = Some(futures::task::current());
-            return Ok(false);
-        }
-
-        Ok(true)
-    }
-
     pub fn on_request_recv_finished(&mut self, req_idx: u16, req_tag: u16) {
         info!(
             "[Tunnel]{} on_request_recv_finished:{}",
@@ -697,26 +658,9 @@ impl Tunnel {
         }
     }
 
-    fn append_rtt(&mut self, rtt: i64) {
-        let rtt_remove = self.rtt_queue[self.rtt_index];
-        self.rtt_queue[self.rtt_index] = rtt;
-        let len = self.rtt_queue.len();
-        self.rtt_index = (self.rtt_index + 1) % len;
-
-        self.rtt_sum = self.rtt_sum + rtt - rtt_remove;
-    }
-
     fn get_elapsed_milliseconds(&self) -> u64 {
         let in_ms = self.time.elapsed().as_millis();
         in_ms as u64
-    }
-
-    pub fn reset_quota_interval(&mut self) {
-        self.quota_of_interval = self.quota_per_second_in_kbytes * (KEEP_ALIVE_INTERVAL as usize);
-        if self.wait_task.is_some() {
-            let wait_task = self.wait_task.take().unwrap();
-            wait_task.notify();
-        }
     }
 
     pub fn send_ping(&mut self) -> bool {
@@ -741,13 +685,15 @@ impl Tunnel {
             }
             _ => {
                 self.ping_count += 1;
-                if ping_count > 0 {
-                    // TODO: fix accurate RTT?
-                    self.append_rtt((ping_count as i64) * (KEEP_ALIVE_INTERVAL as i64));
-                }
             }
         }
 
         true
+    }
+
+    pub fn poll_tunnel_quota_with(&self, bytes_cosume: usize) -> Result<bool, ()> {
+        self.account
+            .borrow_mut()
+            .poll_tunnel_quota_with(bytes_cosume)
     }
 }

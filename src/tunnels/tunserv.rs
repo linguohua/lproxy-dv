@@ -26,8 +26,11 @@ pub fn serve_websocket(wsinfo: WSStreamInfo, s: LongLiveTM) {
 
     let s2 = s.clone();
     let mut rf = s.borrow_mut();
+
     let quota_per_second_in_kbytes = find_usize_from_query_string(&wsinfo.path, "limit=");
     let uuid = wsinfo.uuid;
+    let account = rf.allocate_account(uuid, quota_per_second_in_kbytes);
+
     let is_dns = wsinfo.is_dns;
 
     // Create a channel for our stream, which other sockets will use to
@@ -44,7 +47,7 @@ pub fn serve_websocket(wsinfo: WSStreamInfo, s: LongLiveTM) {
         tunnel_cap,
         tunnel_req_quota,
         quota_per_second_in_kbytes,
-        uuid,
+        account,
         is_dns,
     );
 

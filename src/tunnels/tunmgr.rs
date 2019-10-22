@@ -1,5 +1,5 @@
 use super::Tunnel;
-use crate::config::{ServerCfg, KEEP_ALIVE_INTERVAL};
+use crate::config::{ServerCfg, KEEPALIVE_INTERVAL, QUOTA_RESET_INTERVAL};
 use crate::service::{BandwidthReport, BandwidthReportMap, Instruction, TxType};
 use failure::Error;
 use fnv::FnvHashMap as HashMap;
@@ -25,6 +25,7 @@ pub struct TunMgr {
     discarded: bool,
     ins_tx: TxType,
     pub token_key: String,
+    account_map: HashMap<String, super::LongLiveUA>,
 }
 
 impl TunMgr {
@@ -35,6 +36,7 @@ impl TunMgr {
         Rc::new(RefCell::new(TunMgr {
             tunnel_id: 0,
             tunnels_map: HashMap::default(),
+            account_map: HashMap::default(),
             keepalive_trigger: None,
             discarded: false,
             dns_server_addr,
@@ -123,7 +125,7 @@ impl TunMgr {
             tun.send_bytes_counter = 0;
             tun.recv_bytes_counter = 0;
 
-            let uuid = &tun.uuid;
+            let uuid = &tun.account.borrow().uuid;
             if uuid.len() < 1 {
                 continue;
             }
@@ -159,10 +161,10 @@ impl TunMgr {
     }
 
     fn quota_reset(&mut self) {
-        let tunnels = &self.tunnels_map;
-        for (_, t) in tunnels.iter() {
-            let mut tun = t.borrow_mut();
-            tun.reset_quota_interval();
+        let account_map = &self.account_map;
+        for (_, a) in account_map.iter() {
+            let mut a = a.borrow_mut();
+            a.reset_quota();
         }
     }
 
@@ -173,7 +175,7 @@ impl TunMgr {
 
         let mut ping_interval = 0;
         // tokio timer, every few seconds
-        let task = Interval::new(Instant::now(), Duration::from_millis(KEEP_ALIVE_INTERVAL))
+        let task = Interval::new(Instant::now(), Duration::from_millis(QUOTA_RESET_INTERVAL))
             .skip(1)
             .take_until(tripwire)
             .for_each(move |instant| {
@@ -181,7 +183,7 @@ impl TunMgr {
 
                 let mut rf = s2.borrow_mut();
                 ping_interval += 1;
-                if ping_interval % 3 == 0 {
+                if ping_interval % (KEEPALIVE_INTERVAL / QUOTA_RESET_INTERVAL) == 0 {
                     rf.keepalive();
                 }
 
@@ -201,5 +203,25 @@ impl TunMgr {
             });;
 
         current_thread::spawn(task);
+    }
+
+    pub fn allocate_account(
+        &mut self,
+        uuid: String,
+        quota_per_second_in_kbytes: usize,
+    ) -> super::LongLiveUA {
+        match self.account_map.get(&uuid) {
+            Some(a) => {
+                a.borrow_mut().set_quota_if(quota_per_second_in_kbytes);
+                return a.clone();
+            }
+            None => {
+                let uuid2 = uuid.to_string();
+                let v = super::UserAccount::new(uuid, quota_per_second_in_kbytes);
+                self.account_map.insert(uuid2, v.clone());
+
+                return v;
+            }
+        }
     }
 }
