@@ -24,12 +24,11 @@ pub struct ServerCfg {
     pub etcd_user: String,
     pub etcd_password: String,
     pub token_key: String,
+    pub my_grpc_addr: String,
+    pub my_grpc_port: u16,
 
     pub tun_path: String,
-    pub dns_tun_path: String,
-
-    pub grpc_addr: String,
-    pub grpc_port: u16,
+    pub hub_grpc_addr: String,
 }
 
 impl ServerCfg {
@@ -91,22 +90,22 @@ impl ServerCfg {
             None => "".to_string(),
         };
 
-        let dns_tun_path = match v["dns_tun_path"].as_str() {
-            Some(t) => t.to_string(),
-            None => "".to_string(),
-        };
-
         let token_key = match v["token_key"].as_str() {
             Some(t) => t.to_string(),
             None => "".to_string(),
         };
 
-        let grpc_addr = match v["grpc_addr"].as_str() {
+        let hub_grpc_addr = match v["hub_grpc_addr"].as_str() {
             Some(t) => t.to_string(),
             None => "0.0.0.0".to_string(),
         };
 
-        let grpc_port = match v["grpc_port"].as_u64() {
+        let my_grpc_addr = match v["my_grpc_addr"].as_str() {
+            Some(t) => t.to_string(),
+            None => "0.0.0.0".to_string(),
+        };
+
+        let my_grpc_port = match v["my_grpc_port"].as_u64() {
             Some(t) => t as u16,
             None => 8008,
         };
@@ -122,10 +121,10 @@ impl ServerCfg {
             etcd_user,
             etcd_password,
             tun_path,
-            dns_tun_path,
             token_key,
-            grpc_addr,
-            grpc_port,
+            my_grpc_addr,
+            my_grpc_port,
+            hub_grpc_addr,
         };
 
         if !servercfg.is_valid() {
@@ -156,11 +155,6 @@ impl ServerCfg {
             // if no etcd_addr, the config file must provide tun path, dns tun path
             if self.tun_path.len() < 1 {
                 println!("server cfg invalid, must provide tun_path");
-                valid = false;
-            }
-
-            if self.dns_tun_path.len() < 1 {
-                println!("server cfg invalid, must provide dns_tun_path");
                 valid = false;
             }
         }

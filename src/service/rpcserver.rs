@@ -17,8 +17,8 @@ impl RpcServer {
     pub fn new(cfg: &config::ServerCfg) -> RpcServer {
         RpcServer {
             server: None,
-            addr: cfg.grpc_addr.to_string(),
-            port: cfg.grpc_port,
+            addr: cfg.my_grpc_addr.to_string(),
+            port: cfg.my_grpc_port,
             pkcs12: cfg.pkcs12.to_string(),
             pkcs12_passwd: cfg.pkcs12_password.to_string(),
         }

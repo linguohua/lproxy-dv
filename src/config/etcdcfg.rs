@@ -114,7 +114,7 @@ pub fn etcd_write_instance_data(
     let key_address = format!("{}/address", dir);
     let key_value = server_cfg.external_addr.to_string();
     let key_address2 = format!("{}/grpc_address", dir);
-    let key_value2 = format!("{}:{}", server_cfg.grpc_addr, server_cfg.grpc_port);
+    let key_value2 = format!("{}:{}", server_cfg.my_grpc_addr, server_cfg.my_grpc_port);
 
     kv::set(&client, &key_address, &key_value, None).and_then(move |_| {
         kv::set(&client, &key_address2, &key_value2, None).and_then(move |_| {

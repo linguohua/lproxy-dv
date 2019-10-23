@@ -127,7 +127,7 @@ impl Service {
             } else {
                 let etcdcfg = config::EtcdConfig {
                     tun_path: server_cfg.tun_path.to_string(),
-                    hub_grpc_addr: String::default(),
+                    hub_grpc_addr: server_cfg.hub_grpc_addr.to_string(),
                 };
 
                 self.save_etcd_cfg(etcdcfg);
