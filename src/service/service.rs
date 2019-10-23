@@ -12,7 +12,7 @@ const STATE_STOPPED: u8 = 0;
 const STATE_STARTING: u8 = 1;
 const STATE_RUNNING: u8 = 2;
 const STATE_STOPPING: u8 = 3;
-use super::{SubServiceCtl, SubServiceCtlCmd, SubServiceType};
+use super::{RpcServer, SubServiceCtl, SubServiceCtlCmd, SubServiceType};
 use fnv::FnvHashMap as HashMap;
 use grpcio::{ChannelBuilder, ChannelCredentialsBuilder, Environment};
 use std::cell::RefCell;
@@ -75,10 +75,13 @@ pub struct Service {
 
     flow_map: BandwidthReportMap,
     grpc_client: Option<myrpc::BandwidthReportClient>,
+
+    rpc_server: RpcServer,
 }
 
 impl Service {
     pub fn new(cfg: config::ServerCfg) -> LongLive {
+        let rpcser = RpcServer::new(&cfg);
         Rc::new(RefCell::new(Service {
             subservices: Vec::new(),
             ins_tx: None,
@@ -89,6 +92,7 @@ impl Service {
             monitor_trigger: None,
             flow_map: HashMap::default(),
             grpc_client: None,
+            rpc_server: rpcser,
         }))
     }
 
@@ -96,6 +100,8 @@ impl Service {
     pub fn start(&mut self, s: LongLive) {
         if self.state == STATE_STOPPED {
             self.state = STATE_STARTING;
+
+            self.rpc_server.start().unwrap();
 
             let (tx, rx) = futures::sync::mpsc::unbounded();
             let (trigger, tripwire) = Tripwire::new();

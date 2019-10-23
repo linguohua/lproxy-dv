@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+service DvExport {
+    rpc KickoutUuid(Kickout) returns (Empty) {}
+    rpc UuidCfgChanged(CfgChangeNotify) returns (Empty) {}
+}
+
+message Empty {}
+
+message Kickout {
+    string uuid = 1;
+}
+
+message CfgChangeNotify {
+    string uuid = 1;
+    uint64 kb_per_second = 2;
+}

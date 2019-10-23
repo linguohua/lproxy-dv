@@ -27,6 +27,9 @@ pub struct ServerCfg {
 
     pub tun_path: String,
     pub dns_tun_path: String,
+
+    pub grpc_addr: String,
+    pub grpc_port: u16,
 }
 
 impl ServerCfg {
@@ -98,6 +101,16 @@ impl ServerCfg {
             None => "".to_string(),
         };
 
+        let grpc_addr = match v["grpc_addr"].as_str() {
+            Some(t) => t.to_string(),
+            None => "0.0.0.0".to_string(),
+        };
+
+        let grpc_port = match v["grpc_port"].as_u64() {
+            Some(t) => t as u16,
+            None => 8008,
+        };
+
         let servercfg = ServerCfg {
             pkcs12,
             listen_addr,
@@ -111,6 +124,8 @@ impl ServerCfg {
             tun_path,
             dns_tun_path,
             token_key,
+            grpc_addr,
+            grpc_port,
         };
 
         if !servercfg.is_valid() {
