@@ -5,16 +5,23 @@ service BandwidthReport {
 }
 
 message BandwidthStatistics{
+    // all devices that join this server instance
+    // will be reported, even it's flow is zero.
+    // the controller server can know that which
+    // devices are attached to this DV server now.
     repeated BandwidthUsage statistics = 1;
 }
 
 message BandwidthUsage {
+    // device uuid
     string uuid = 1;
+    // total sent bytes in this report period
     uint64 send_bytes = 2;
+    // total recv_bytes in this report period
     uint64 recv_bytes = 3;
 }
 
 message ReportResult {
+    // should always be 0
     int32 code = 1;
 }
-

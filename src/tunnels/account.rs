@@ -74,4 +74,8 @@ impl UserAccount {
         self.quota_per_second = quota_per_second;
         self.quota_remain = quota_per_second * (QUOTA_RESET_INTERVAL as usize / 1000);
     }
+
+    pub fn has_flowctl(&self) -> bool {
+        return self.quota_per_second > 0;
+    }
 }

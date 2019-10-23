@@ -8,10 +8,13 @@ service DvExport {
 message Empty {}
 
 message Kickout {
+    // which device to be kickout
     string uuid = 1;
 }
 
 message CfgChangeNotify {
+    // which device's cfg has changed
     string uuid = 1;
+    // the bandwidth limit changed
     uint64 kb_per_second = 2;
 }

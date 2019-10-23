@@ -46,7 +46,6 @@ pub fn serve_websocket(wsinfo: WSStreamInfo, s: LongLiveTM) {
         rf.dns_server_addr,
         tunnel_cap,
         tunnel_req_quota,
-        quota_per_second_in_kbytes,
         account,
         is_dns,
     );
