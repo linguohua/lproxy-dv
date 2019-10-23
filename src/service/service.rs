@@ -12,7 +12,7 @@ const STATE_STOPPED: u8 = 0;
 const STATE_STARTING: u8 = 1;
 const STATE_RUNNING: u8 = 2;
 const STATE_STOPPING: u8 = 3;
-use super::{RpcServer, SubServiceCtl, SubServiceCtlCmd, SubServiceType};
+use super::{RpcServer, SubServiceCtl, SubServiceCtlCmd};
 use fnv::FnvHashMap as HashMap;
 use grpcio::{ChannelBuilder, ChannelCredentialsBuilder, Environment};
 use std::cell::RefCell;
@@ -206,21 +206,14 @@ impl Service {
 
     fn notify_listener_update_etcdcfg(&self) {
         for ss in self.subservices.iter() {
-            match ss.sstype {
-                SubServiceType::Listener => {
-                    if ss.ctl_tx.is_some() {
-                        let cmd =
-                            SubServiceCtlCmd::UpdateEtcdCfg(self.etcdcfg.as_ref().unwrap().clone());
-                        match ss.ctl_tx.as_ref().unwrap().unbounded_send(cmd) {
-                            Err(e) => {
-                                error!("[Service] send update etcdcfg to listener failed:{}", e);
-                            }
-                            _ => {}
-                        }
-                        return;
+            if ss.ctl_tx.is_some() {
+                let cmd = SubServiceCtlCmd::UpdateEtcdCfg(self.etcdcfg.as_ref().unwrap().clone());
+                match ss.ctl_tx.as_ref().unwrap().unbounded_send(cmd) {
+                    Err(e) => {
+                        error!("[Service] send update etcdcfg to listener failed:{}", e);
                     }
+                    _ => {}
                 }
-                _ => {}
             }
         }
     }

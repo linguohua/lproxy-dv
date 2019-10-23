@@ -17,7 +17,7 @@
 #![allow(unsafe_code)]
 #![allow(unused_imports)]
 #![allow(unused_results)]
-//! Generated file from `bw_report.proto`
+//! Generated file from `dv_import.proto`
 
 use protobuf::Message as Message_imported_for_functions;
 use protobuf::ProtobufEnum as ProtobufEnum_imported_for_functions;
@@ -603,39 +603,432 @@ impl ::protobuf::reflect::ProtobufValue for ReportResult {
     }
 }
 
+#[derive(PartialEq,Clone,Default)]
+pub struct CfgPullRequest {
+    // message fields
+    pub uuid: ::std::string::String,
+    // special fields
+    pub unknown_fields: ::protobuf::UnknownFields,
+    pub cached_size: ::protobuf::CachedSize,
+}
+
+impl<'a> ::std::default::Default for &'a CfgPullRequest {
+    fn default() -> &'a CfgPullRequest {
+        <CfgPullRequest as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl CfgPullRequest {
+    pub fn new() -> CfgPullRequest {
+        ::std::default::Default::default()
+    }
+
+    // string uuid = 1;
+
+
+    pub fn get_uuid(&self) -> &str {
+        &self.uuid
+    }
+    pub fn clear_uuid(&mut self) {
+        self.uuid.clear();
+    }
+
+    // Param is passed by value, moved
+    pub fn set_uuid(&mut self, v: ::std::string::String) {
+        self.uuid = v;
+    }
+
+    // Mutable pointer to the field.
+    // If field is not initialized, it is initialized with default value first.
+    pub fn mut_uuid(&mut self) -> &mut ::std::string::String {
+        &mut self.uuid
+    }
+
+    // Take field
+    pub fn take_uuid(&mut self) -> ::std::string::String {
+        ::std::mem::replace(&mut self.uuid, ::std::string::String::new())
+    }
+}
+
+impl ::protobuf::Message for CfgPullRequest {
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::ProtobufResult<()> {
+        while !is.eof()? {
+            let (field_number, wire_type) = is.read_tag_unpack()?;
+            match field_number {
+                1 => {
+                    ::protobuf::rt::read_singular_proto3_string_into(wire_type, is, &mut self.uuid)?;
+                },
+                _ => {
+                    ::protobuf::rt::read_unknown_or_skip_group(field_number, wire_type, is, self.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u32 {
+        let mut my_size = 0;
+        if !self.uuid.is_empty() {
+            my_size += ::protobuf::rt::string_size(1, &self.uuid);
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.get_unknown_fields());
+        self.cached_size.set(my_size);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::ProtobufResult<()> {
+        if !self.uuid.is_empty() {
+            os.write_string(1, &self.uuid)?;
+        }
+        os.write_unknown_fields(self.get_unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn get_cached_size(&self) -> u32 {
+        self.cached_size.get()
+    }
+
+    fn get_unknown_fields(&self) -> &::protobuf::UnknownFields {
+        &self.unknown_fields
+    }
+
+    fn mut_unknown_fields(&mut self) -> &mut ::protobuf::UnknownFields {
+        &mut self.unknown_fields
+    }
+
+    fn as_any(&self) -> &dyn (::std::any::Any) {
+        self as &dyn (::std::any::Any)
+    }
+    fn as_any_mut(&mut self) -> &mut dyn (::std::any::Any) {
+        self as &mut dyn (::std::any::Any)
+    }
+    fn into_any(self: Box<Self>) -> ::std::boxed::Box<dyn (::std::any::Any)> {
+        self
+    }
+
+    fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {
+        Self::descriptor_static()
+    }
+
+    fn new() -> CfgPullRequest {
+        CfgPullRequest::new()
+    }
+
+    fn descriptor_static() -> &'static ::protobuf::reflect::MessageDescriptor {
+        static mut descriptor: ::protobuf::lazy::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::lazy::Lazy {
+            lock: ::protobuf::lazy::ONCE_INIT,
+            ptr: 0 as *const ::protobuf::reflect::MessageDescriptor,
+        };
+        unsafe {
+            descriptor.get(|| {
+                let mut fields = ::std::vec::Vec::new();
+                fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeString>(
+                    "uuid",
+                    |m: &CfgPullRequest| { &m.uuid },
+                    |m: &mut CfgPullRequest| { &mut m.uuid },
+                ));
+                ::protobuf::reflect::MessageDescriptor::new::<CfgPullRequest>(
+                    "CfgPullRequest",
+                    fields,
+                    file_descriptor_proto()
+                )
+            })
+        }
+    }
+
+    fn default_instance() -> &'static CfgPullRequest {
+        static mut instance: ::protobuf::lazy::Lazy<CfgPullRequest> = ::protobuf::lazy::Lazy {
+            lock: ::protobuf::lazy::ONCE_INIT,
+            ptr: 0 as *const CfgPullRequest,
+        };
+        unsafe {
+            instance.get(CfgPullRequest::new)
+        }
+    }
+}
+
+impl ::protobuf::Clear for CfgPullRequest {
+    fn clear(&mut self) {
+        self.uuid.clear();
+        self.unknown_fields.clear();
+    }
+}
+
+impl ::std::fmt::Debug for CfgPullRequest {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for CfgPullRequest {
+    fn as_ref(&self) -> ::protobuf::reflect::ProtobufValueRef {
+        ::protobuf::reflect::ProtobufValueRef::Message(self)
+    }
+}
+
+#[derive(PartialEq,Clone,Default)]
+pub struct CfgPullResult {
+    // message fields
+    pub code: i32,
+    pub bandwidth_limit_kbs: u64,
+    // special fields
+    pub unknown_fields: ::protobuf::UnknownFields,
+    pub cached_size: ::protobuf::CachedSize,
+}
+
+impl<'a> ::std::default::Default for &'a CfgPullResult {
+    fn default() -> &'a CfgPullResult {
+        <CfgPullResult as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl CfgPullResult {
+    pub fn new() -> CfgPullResult {
+        ::std::default::Default::default()
+    }
+
+    // int32 code = 1;
+
+
+    pub fn get_code(&self) -> i32 {
+        self.code
+    }
+    pub fn clear_code(&mut self) {
+        self.code = 0;
+    }
+
+    // Param is passed by value, moved
+    pub fn set_code(&mut self, v: i32) {
+        self.code = v;
+    }
+
+    // uint64 bandwidth_limit_kbs = 2;
+
+
+    pub fn get_bandwidth_limit_kbs(&self) -> u64 {
+        self.bandwidth_limit_kbs
+    }
+    pub fn clear_bandwidth_limit_kbs(&mut self) {
+        self.bandwidth_limit_kbs = 0;
+    }
+
+    // Param is passed by value, moved
+    pub fn set_bandwidth_limit_kbs(&mut self, v: u64) {
+        self.bandwidth_limit_kbs = v;
+    }
+}
+
+impl ::protobuf::Message for CfgPullResult {
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::ProtobufResult<()> {
+        while !is.eof()? {
+            let (field_number, wire_type) = is.read_tag_unpack()?;
+            match field_number {
+                1 => {
+                    if wire_type != ::protobuf::wire_format::WireTypeVarint {
+                        return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
+                    }
+                    let tmp = is.read_int32()?;
+                    self.code = tmp;
+                },
+                2 => {
+                    if wire_type != ::protobuf::wire_format::WireTypeVarint {
+                        return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
+                    }
+                    let tmp = is.read_uint64()?;
+                    self.bandwidth_limit_kbs = tmp;
+                },
+                _ => {
+                    ::protobuf::rt::read_unknown_or_skip_group(field_number, wire_type, is, self.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u32 {
+        let mut my_size = 0;
+        if self.code != 0 {
+            my_size += ::protobuf::rt::value_size(1, self.code, ::protobuf::wire_format::WireTypeVarint);
+        }
+        if self.bandwidth_limit_kbs != 0 {
+            my_size += ::protobuf::rt::value_size(2, self.bandwidth_limit_kbs, ::protobuf::wire_format::WireTypeVarint);
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.get_unknown_fields());
+        self.cached_size.set(my_size);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::ProtobufResult<()> {
+        if self.code != 0 {
+            os.write_int32(1, self.code)?;
+        }
+        if self.bandwidth_limit_kbs != 0 {
+            os.write_uint64(2, self.bandwidth_limit_kbs)?;
+        }
+        os.write_unknown_fields(self.get_unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn get_cached_size(&self) -> u32 {
+        self.cached_size.get()
+    }
+
+    fn get_unknown_fields(&self) -> &::protobuf::UnknownFields {
+        &self.unknown_fields
+    }
+
+    fn mut_unknown_fields(&mut self) -> &mut ::protobuf::UnknownFields {
+        &mut self.unknown_fields
+    }
+
+    fn as_any(&self) -> &dyn (::std::any::Any) {
+        self as &dyn (::std::any::Any)
+    }
+    fn as_any_mut(&mut self) -> &mut dyn (::std::any::Any) {
+        self as &mut dyn (::std::any::Any)
+    }
+    fn into_any(self: Box<Self>) -> ::std::boxed::Box<dyn (::std::any::Any)> {
+        self
+    }
+
+    fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {
+        Self::descriptor_static()
+    }
+
+    fn new() -> CfgPullResult {
+        CfgPullResult::new()
+    }
+
+    fn descriptor_static() -> &'static ::protobuf::reflect::MessageDescriptor {
+        static mut descriptor: ::protobuf::lazy::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::lazy::Lazy {
+            lock: ::protobuf::lazy::ONCE_INIT,
+            ptr: 0 as *const ::protobuf::reflect::MessageDescriptor,
+        };
+        unsafe {
+            descriptor.get(|| {
+                let mut fields = ::std::vec::Vec::new();
+                fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeInt32>(
+                    "code",
+                    |m: &CfgPullResult| { &m.code },
+                    |m: &mut CfgPullResult| { &mut m.code },
+                ));
+                fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeUint64>(
+                    "bandwidth_limit_kbs",
+                    |m: &CfgPullResult| { &m.bandwidth_limit_kbs },
+                    |m: &mut CfgPullResult| { &mut m.bandwidth_limit_kbs },
+                ));
+                ::protobuf::reflect::MessageDescriptor::new::<CfgPullResult>(
+                    "CfgPullResult",
+                    fields,
+                    file_descriptor_proto()
+                )
+            })
+        }
+    }
+
+    fn default_instance() -> &'static CfgPullResult {
+        static mut instance: ::protobuf::lazy::Lazy<CfgPullResult> = ::protobuf::lazy::Lazy {
+            lock: ::protobuf::lazy::ONCE_INIT,
+            ptr: 0 as *const CfgPullResult,
+        };
+        unsafe {
+            instance.get(CfgPullResult::new)
+        }
+    }
+}
+
+impl ::protobuf::Clear for CfgPullResult {
+    fn clear(&mut self) {
+        self.code = 0;
+        self.bandwidth_limit_kbs = 0;
+        self.unknown_fields.clear();
+    }
+}
+
+impl ::std::fmt::Debug for CfgPullResult {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for CfgPullResult {
+    fn as_ref(&self) -> ::protobuf::reflect::ProtobufValueRef {
+        ::protobuf::reflect::ProtobufValueRef::Message(self)
+    }
+}
+
 static file_descriptor_proto_data: &'static [u8] = b"\
-    \n\x0fbw_report.proto\"F\n\x13BandwidthStatistics\x12/\n\nstatistics\x18\
+    \n\x0fdv_import.proto\"F\n\x13BandwidthStatistics\x12/\n\nstatistics\x18\
     \x01\x20\x03(\x0b2\x0f.BandwidthUsageR\nstatistics\"b\n\x0eBandwidthUsag\
     e\x12\x12\n\x04uuid\x18\x01\x20\x01(\tR\x04uuid\x12\x1d\n\nsend_bytes\
     \x18\x02\x20\x01(\x04R\tsendBytes\x12\x1d\n\nrecv_bytes\x18\x03\x20\x01(\
     \x04R\trecvBytes\"\"\n\x0cReportResult\x12\x12\n\x04code\x18\x01\x20\x01\
-    (\x05R\x04code2B\n\x0fBandwidthReport\x12/\n\x06Report\x12\x14.Bandwidth\
-    Statistics\x1a\r.ReportResult\"\0J\x86\x04\n\x06\x12\x04\0\0\x12\x01\n\
-    \x08\n\x01\x0c\x12\x03\0\0\x12\n\n\n\x02\x06\0\x12\x04\x02\0\x04\x01\n\n\
-    \n\x03\x06\0\x01\x12\x03\x02\x08\x17\n\x0b\n\x04\x06\0\x02\0\x12\x03\x03\
-    \x04=\n\x0c\n\x05\x06\0\x02\0\x01\x12\x03\x03\x08\x0e\n\x0c\n\x05\x06\0\
-    \x02\0\x02\x12\x03\x03\x0f\"\n\x0c\n\x05\x06\0\x02\0\x03\x12\x03\x03-9\n\
-    \n\n\x02\x04\0\x12\x04\x06\0\x08\x01\n\n\n\x03\x04\0\x01\x12\x03\x06\x08\
-    \x1b\n\x0b\n\x04\x04\0\x02\0\x12\x03\x07\x04+\n\x0c\n\x05\x04\0\x02\0\
-    \x04\x12\x03\x07\x04\x0c\n\x0c\n\x05\x04\0\x02\0\x06\x12\x03\x07\r\x1b\n\
-    \x0c\n\x05\x04\0\x02\0\x01\x12\x03\x07\x1c&\n\x0c\n\x05\x04\0\x02\0\x03\
-    \x12\x03\x07)*\n\n\n\x02\x04\x01\x12\x04\n\0\x0e\x01\n\n\n\x03\x04\x01\
-    \x01\x12\x03\n\x08\x16\n\x0b\n\x04\x04\x01\x02\0\x12\x03\x0b\x04\x14\n\r\
-    \n\x05\x04\x01\x02\0\x04\x12\x04\x0b\x04\n\x18\n\x0c\n\x05\x04\x01\x02\0\
-    \x05\x12\x03\x0b\x04\n\n\x0c\n\x05\x04\x01\x02\0\x01\x12\x03\x0b\x0b\x0f\
-    \n\x0c\n\x05\x04\x01\x02\0\x03\x12\x03\x0b\x12\x13\n\x0b\n\x04\x04\x01\
-    \x02\x01\x12\x03\x0c\x04\x1a\n\r\n\x05\x04\x01\x02\x01\x04\x12\x04\x0c\
-    \x04\x0b\x14\n\x0c\n\x05\x04\x01\x02\x01\x05\x12\x03\x0c\x04\n\n\x0c\n\
-    \x05\x04\x01\x02\x01\x01\x12\x03\x0c\x0b\x15\n\x0c\n\x05\x04\x01\x02\x01\
-    \x03\x12\x03\x0c\x18\x19\n\x0b\n\x04\x04\x01\x02\x02\x12\x03\r\x04\x1a\n\
-    \r\n\x05\x04\x01\x02\x02\x04\x12\x04\r\x04\x0c\x1a\n\x0c\n\x05\x04\x01\
-    \x02\x02\x05\x12\x03\r\x04\n\n\x0c\n\x05\x04\x01\x02\x02\x01\x12\x03\r\
-    \x0b\x15\n\x0c\n\x05\x04\x01\x02\x02\x03\x12\x03\r\x18\x19\n\n\n\x02\x04\
-    \x02\x12\x04\x10\0\x12\x01\n\n\n\x03\x04\x02\x01\x12\x03\x10\x08\x14\n\
-    \x0b\n\x04\x04\x02\x02\0\x12\x03\x11\x04\x13\n\r\n\x05\x04\x02\x02\0\x04\
-    \x12\x04\x11\x04\x10\x16\n\x0c\n\x05\x04\x02\x02\0\x05\x12\x03\x11\x04\t\
-    \n\x0c\n\x05\x04\x02\x02\0\x01\x12\x03\x11\n\x0e\n\x0c\n\x05\x04\x02\x02\
-    \0\x03\x12\x03\x11\x11\x12b\x06proto3\
+    (\x05R\x04code\"$\n\x0eCfgPullRequest\x12\x12\n\x04uuid\x18\x01\x20\x01(\
+    \tR\x04uuid\"S\n\rCfgPullResult\x12\x12\n\x04code\x18\x01\x20\x01(\x05R\
+    \x04code\x12.\n\x13bandwidth_limit_kbs\x18\x02\x20\x01(\x04R\x11bandwidt\
+    hLimitKbs2B\n\x0fBandwidthReport\x12/\n\x06Report\x12\x14.BandwidthStati\
+    stics\x1a\r.ReportResult\"\02=\n\rDeviceCfgPull\x12,\n\x07PullCfg\x12\
+    \x0f.CfgPullRequest\x1a\x0e.CfgPullResult\"\0J\x83\t\n\x06\x12\x04\0\0'\
+    \x01\n\x08\n\x01\x0c\x12\x03\0\0\x12\n\n\n\x02\x06\0\x12\x04\x02\0\x04\
+    \x01\n\n\n\x03\x06\0\x01\x12\x03\x02\x08\x17\n\x0b\n\x04\x06\0\x02\0\x12\
+    \x03\x03\x04=\n\x0c\n\x05\x06\0\x02\0\x01\x12\x03\x03\x08\x0e\n\x0c\n\
+    \x05\x06\0\x02\0\x02\x12\x03\x03\x0f\"\n\x0c\n\x05\x06\0\x02\0\x03\x12\
+    \x03\x03-9\n\n\n\x02\x04\0\x12\x04\x06\0\x0c\x01\n\n\n\x03\x04\0\x01\x12\
+    \x03\x06\x08\x1b\n\xbd\x01\n\x04\x04\0\x02\0\x12\x03\x0b\x04+\x1a\xaf\
+    \x01\x20all\x20devices\x20that\x20join\x20this\x20server\x20instance\n\
+    \x20will\x20be\x20reported,\x20even\x20it's\x20flow\x20is\x20zero.\n\x20\
+    the\x20controller\x20server\x20can\x20know\x20that\x20which\n\x20devices\
+    \x20are\x20attached\x20to\x20this\x20DV\x20server\x20now.\n\n\x0c\n\x05\
+    \x04\0\x02\0\x04\x12\x03\x0b\x04\x0c\n\x0c\n\x05\x04\0\x02\0\x06\x12\x03\
+    \x0b\r\x1b\n\x0c\n\x05\x04\0\x02\0\x01\x12\x03\x0b\x1c&\n\x0c\n\x05\x04\
+    \0\x02\0\x03\x12\x03\x0b)*\n\n\n\x02\x04\x01\x12\x04\x0e\0\x15\x01\n\n\n\
+    \x03\x04\x01\x01\x12\x03\x0e\x08\x16\n\x1a\n\x04\x04\x01\x02\0\x12\x03\
+    \x10\x04\x14\x1a\r\x20device\x20uuid\n\n\r\n\x05\x04\x01\x02\0\x04\x12\
+    \x04\x10\x04\x0e\x18\n\x0c\n\x05\x04\x01\x02\0\x05\x12\x03\x10\x04\n\n\
+    \x0c\n\x05\x04\x01\x02\0\x01\x12\x03\x10\x0b\x0f\n\x0c\n\x05\x04\x01\x02\
+    \0\x03\x12\x03\x10\x12\x13\n5\n\x04\x04\x01\x02\x01\x12\x03\x12\x04\x1a\
+    \x1a(\x20total\x20sent\x20bytes\x20in\x20this\x20report\x20period\n\n\r\
+    \n\x05\x04\x01\x02\x01\x04\x12\x04\x12\x04\x10\x14\n\x0c\n\x05\x04\x01\
+    \x02\x01\x05\x12\x03\x12\x04\n\n\x0c\n\x05\x04\x01\x02\x01\x01\x12\x03\
+    \x12\x0b\x15\n\x0c\n\x05\x04\x01\x02\x01\x03\x12\x03\x12\x18\x19\n5\n\
+    \x04\x04\x01\x02\x02\x12\x03\x14\x04\x1a\x1a(\x20total\x20recv_bytes\x20\
+    in\x20this\x20report\x20period\n\n\r\n\x05\x04\x01\x02\x02\x04\x12\x04\
+    \x14\x04\x12\x1a\n\x0c\n\x05\x04\x01\x02\x02\x05\x12\x03\x14\x04\n\n\x0c\
+    \n\x05\x04\x01\x02\x02\x01\x12\x03\x14\x0b\x15\n\x0c\n\x05\x04\x01\x02\
+    \x02\x03\x12\x03\x14\x18\x19\n\n\n\x02\x04\x02\x12\x04\x17\0\x1a\x01\n\n\
+    \n\x03\x04\x02\x01\x12\x03\x17\x08\x14\n!\n\x04\x04\x02\x02\0\x12\x03\
+    \x19\x04\x13\x1a\x14\x20should\x20always\x20be\x200\n\n\r\n\x05\x04\x02\
+    \x02\0\x04\x12\x04\x19\x04\x17\x16\n\x0c\n\x05\x04\x02\x02\0\x05\x12\x03\
+    \x19\x04\t\n\x0c\n\x05\x04\x02\x02\0\x01\x12\x03\x19\n\x0e\n\x0c\n\x05\
+    \x04\x02\x02\0\x03\x12\x03\x19\x11\x12\n\n\n\x02\x06\x01\x12\x04\x1c\0\
+    \x1e\x01\n\n\n\x03\x06\x01\x01\x12\x03\x1c\x08\x15\n\x0b\n\x04\x06\x01\
+    \x02\0\x12\x03\x1d\x04:\n\x0c\n\x05\x06\x01\x02\0\x01\x12\x03\x1d\x08\
+    \x0f\n\x0c\n\x05\x06\x01\x02\0\x02\x12\x03\x1d\x10\x1e\n\x0c\n\x05\x06\
+    \x01\x02\0\x03\x12\x03\x1d)6\n\n\n\x02\x04\x03\x12\x04\x20\0\"\x01\n\n\n\
+    \x03\x04\x03\x01\x12\x03\x20\x08\x16\n\x0b\n\x04\x04\x03\x02\0\x12\x03!\
+    \x04\x14\n\r\n\x05\x04\x03\x02\0\x04\x12\x04!\x04\x20\x18\n\x0c\n\x05\
+    \x04\x03\x02\0\x05\x12\x03!\x04\n\n\x0c\n\x05\x04\x03\x02\0\x01\x12\x03!\
+    \x0b\x0f\n\x0c\n\x05\x04\x03\x02\0\x03\x12\x03!\x12\x13\n\n\n\x02\x04\
+    \x04\x12\x04$\0'\x01\n\n\n\x03\x04\x04\x01\x12\x03$\x08\x15\n\x0b\n\x04\
+    \x04\x04\x02\0\x12\x03%\x04\x13\n\r\n\x05\x04\x04\x02\0\x04\x12\x04%\x04\
+    $\x17\n\x0c\n\x05\x04\x04\x02\0\x05\x12\x03%\x04\t\n\x0c\n\x05\x04\x04\
+    \x02\0\x01\x12\x03%\n\x0e\n\x0c\n\x05\x04\x04\x02\0\x03\x12\x03%\x11\x12\
+    \n\x0b\n\x04\x04\x04\x02\x01\x12\x03&\x04#\n\r\n\x05\x04\x04\x02\x01\x04\
+    \x12\x04&\x04%\x13\n\x0c\n\x05\x04\x04\x02\x01\x05\x12\x03&\x04\n\n\x0c\
+    \n\x05\x04\x04\x02\x01\x01\x12\x03&\x0b\x1e\n\x0c\n\x05\x04\x04\x02\x01\
+    \x03\x12\x03&!\"b\x06proto3\
 ";
 
 static mut file_descriptor_proto_lazy: ::protobuf::lazy::Lazy<::protobuf::descriptor::FileDescriptorProto> = ::protobuf::lazy::Lazy {

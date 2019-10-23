@@ -1,17 +1,24 @@
 use super::new_forward_ex;
-use super::LongLiveTM;
 use super::Tunnel;
+use super::{LongLiveTM, LongLiveUA};
 use crate::tlsserver::WSStreamInfo;
 use futures::{Future, Stream};
 use log::{debug, info};
 use tokio;
 use tokio::runtime::current_thread;
 
-pub fn serve_websocket(wsinfo: WSStreamInfo, s: LongLiveTM) {
+pub fn serve_websocket(
+    wsinfo: WSStreamInfo,
+    has_flowctl: bool,
+    account: LongLiveUA,
+    s: LongLiveTM,
+) {
     let mut wsinfo = wsinfo;
     let ws_stream = wsinfo.ws.take().unwrap();
+
     let mut tunnel_cap = find_usize_from_query_string(&wsinfo.path, "cap=");
     let mut tunnel_req_quota: u32 = find_usize_from_query_string(&wsinfo.path, "quota=") as u32;
+
     if tunnel_cap > 1024 {
         info!(
             "[tunserv] tunnel cap from query string is too large:{}, reset to 0",
@@ -26,11 +33,6 @@ pub fn serve_websocket(wsinfo: WSStreamInfo, s: LongLiveTM) {
 
     let s2 = s.clone();
     let mut rf = s.borrow_mut();
-
-    let quota_per_second_in_kbytes = find_usize_from_query_string(&wsinfo.path, "limit=");
-    let uuid = wsinfo.uuid;
-    let account = rf.allocate_account(uuid, quota_per_second_in_kbytes);
-
     let is_dns = wsinfo.is_dns;
 
     // Create a channel for our stream, which other sockets will use to
@@ -46,6 +48,7 @@ pub fn serve_websocket(wsinfo: WSStreamInfo, s: LongLiveTM) {
         rf.dns_server_addr,
         tunnel_cap,
         tunnel_req_quota,
+        has_flowctl,
         account,
         is_dns,
     );

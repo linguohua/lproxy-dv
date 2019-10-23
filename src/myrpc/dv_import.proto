@@ -25,3 +25,16 @@ message ReportResult {
     // should always be 0
     int32 code = 1;
 }
+
+service DeviceCfgPull {
+    rpc PullCfg(CfgPullRequest) returns (CfgPullResult) {}
+}
+
+message CfgPullRequest {
+    string uuid = 1;
+}
+
+message CfgPullResult {
+    int32 code = 1;
+    uint64 bandwidth_limit_kbs = 2;
+}

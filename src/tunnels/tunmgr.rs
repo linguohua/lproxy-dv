@@ -1,13 +1,15 @@
 use super::Tunnel;
-use crate::config::{ServerCfg, KEEPALIVE_INTERVAL, QUOTA_RESET_INTERVAL};
+use crate::config::{EtcdConfig, ServerCfg, KEEPALIVE_INTERVAL, QUOTA_RESET_INTERVAL};
 use crate::service::{BandwidthReport, BandwidthReportMap, Instruction, TxType};
 use failure::Error;
 use fnv::FnvHashMap as HashMap;
+use grpcio::Environment;
 use log::{debug, error, info};
 use std::cell::RefCell;
 use std::net::SocketAddr;
 use std::rc::Rc;
 use std::result::Result;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use stream_cancel::{StreamExt, Trigger, Tripwire};
 use tokio::prelude::*;
@@ -26,12 +28,14 @@ pub struct TunMgr {
     ins_tx: TxType,
     pub token_key: String,
     account_map: HashMap<String, super::LongLiveUA>,
+    grpc_e: Arc<Environment>,
+    grpc_addr: String,
 }
 
 impl TunMgr {
-    pub fn new(cfg: &ServerCfg, ins_tx: TxType) -> LongLive {
+    pub fn new(cfg: &ServerCfg, etcdcfg: &EtcdConfig, ins_tx: TxType) -> LongLive {
         let dns_server_addr = Some(cfg.dns_server_addr.parse().unwrap());
-
+        let grpc_e = Arc::new(Environment::new(1));
         let token_key = cfg.token_key.to_string();
         Rc::new(RefCell::new(TunMgr {
             tunnel_id: 0,
@@ -42,6 +46,8 @@ impl TunMgr {
             dns_server_addr,
             ins_tx,
             token_key,
+            grpc_e,
+            grpc_addr: etcdcfg.hub_grpc_addr.to_string(),
         }))
     }
 
@@ -50,11 +56,28 @@ impl TunMgr {
         Ok(())
     }
 
+    pub fn update_etcd_cfg(&mut self, etcdcfg: &EtcdConfig) {
+        info!("[TunMgr] TunMgr update update_etcd_cfg");
+        self.grpc_addr = etcdcfg.hub_grpc_addr.to_string();
+    }
+
     pub fn next_tunnel_id(&mut self) -> usize {
         let id = self.tunnel_id;
         self.tunnel_id += 1;
 
         id
+    }
+
+    pub fn get_e(&self) -> Arc<Environment> {
+        self.grpc_e.clone()
+    }
+
+    pub fn get_grpc_addr(&self) -> String {
+        self.grpc_addr.to_string()
+    }
+
+    pub fn has_grpc(&self) -> bool {
+        self.grpc_addr.len() > 0
     }
 
     pub fn stop(&mut self) {
@@ -205,20 +228,14 @@ impl TunMgr {
         current_thread::spawn(task);
     }
 
-    pub fn allocate_account(
-        &mut self,
-        uuid: String,
-        quota_per_second_in_kbytes: usize,
-    ) -> super::LongLiveUA {
-        match self.account_map.get(&uuid) {
+    pub fn allocate_account(&mut self, uuid: &str, ll: LongLiveTM) -> super::LongLiveUA {
+        match self.account_map.get(uuid) {
             Some(a) => {
-                a.borrow_mut().set_quota_if(quota_per_second_in_kbytes);
                 return a.clone();
             }
             None => {
-                let uuid2 = uuid.to_string();
-                let v = super::UserAccount::new(uuid, quota_per_second_in_kbytes);
-                self.account_map.insert(uuid2, v.clone());
+                let v = super::UserAccount::new(uuid.to_string(), ll);
+                self.account_map.insert(uuid.to_string(), v.clone());
 
                 return v;
             }

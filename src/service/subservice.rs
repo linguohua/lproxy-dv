@@ -106,6 +106,7 @@ fn start_listener(
 
 fn start_one_tunmgr(
     cfg: Arc<ServerCfg>,
+    etcdcfg: Arc<EtcdConfig>,
     r_tx: futures::Complete<bool>,
     ins_tx: super::TxType,
 ) -> SubServiceCtl {
@@ -113,7 +114,7 @@ fn start_one_tunmgr(
     let handler = std::thread::spawn(move || {
         let mut rt = Runtime::new().unwrap();
         let fut = lazy(move || {
-            let tunmgr = tunnels::TunMgr::new(&cfg, ins_tx);
+            let tunmgr = tunnels::TunMgr::new(&cfg, &etcdcfg, ins_tx);
             // thread code
             if let Err(e) = tunmgr.borrow_mut().init(tunmgr.clone()) {
                 error!("[SubService]tunmgr start failed:{}", e);
@@ -132,11 +133,21 @@ fn start_one_tunmgr(
                         f.borrow_mut().stop();
                     }
                     SubServiceCtlCmd::TcpTunnel(t) => {
-                        tunnels::serve_websocket(t, tunmgr.clone());
+                        let ua;
+                        {
+                            ua = tunmgr
+                                .borrow_mut()
+                                .allocate_account(&t.uuid, tunmgr.clone());
+                        }
+
+                        ua.borrow_mut().serve_tunnel_create(t, ua.clone());
                     }
-                    _ => {
-                        error!("[SubService]tunmgr unknown ctl cmd:{}", cmd);
-                    }
+                    SubServiceCtlCmd::UpdateEtcdCfg(cfg) => {
+                        let f = tunmgr.clone();
+                        f.borrow_mut().update_etcd_cfg(&cfg);
+                    } // _ => {
+                      //     error!("[SubService]tunmgr unknown ctl cmd:{}", cmd);
+                      // }
                 }
 
                 Ok(())
@@ -173,6 +184,7 @@ type SubsctlVec = Rc<RefCell<Vec<SubServiceCtl>>>;
 
 fn start_tunmgr(
     cfg: std::sync::Arc<ServerCfg>,
+    etcdcfg: Arc<EtcdConfig>,
     ins_tx: super::TxType,
 ) -> impl Future<Item = SubsctlVec, Error = ()> {
     let cpus = num_cpus::get();
@@ -186,7 +198,11 @@ fn start_tunmgr(
         .for_each(move |_| {
             let (tx, rx) = futures::oneshot();
             let subservices = subservices.clone();
-            to_future(rx, start_one_tunmgr(cfg.clone(), tx, ins_tx.clone())).and_then(move |ctl| {
+            to_future(
+                rx,
+                start_one_tunmgr(cfg.clone(), etcdcfg.clone(), tx, ins_tx.clone()),
+            )
+            .and_then(move |ctl| {
                 subservices.borrow_mut().push(ctl);
                 Ok(())
             })
@@ -211,7 +227,7 @@ pub fn start_subservice(
     let cfg2 = cfg.clone();
 
     // start tunmgr first
-    let tunmgr_fut = start_tunmgr(cfg.clone(), ins_tx.clone());
+    let tunmgr_fut = start_tunmgr(cfg.clone(), etcdcfg.clone(), ins_tx.clone());
 
     // finally start listener
     let listener_fut = tunmgr_fut.and_then(move |tcp_sss| {

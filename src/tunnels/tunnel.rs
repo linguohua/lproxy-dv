@@ -57,11 +57,10 @@ impl Tunnel {
         dns_server_addr: Option<SocketAddr>,
         cap: usize,
         req_quota: u32,
+        has_flowctl: bool,
         account: LongLiveUA,
         is_for_dns: bool,
     ) -> LongLiveTun {
-        let has_flowctl = account.borrow().has_flowctl();
-
         info!(
             "[Tunnel]new Tunnel, idx:{}, cap:{}, dns:{:?}, flowctl enable:{}, quota:{}",
             tid, cap, dns_server_addr, has_flowctl, req_quota,
