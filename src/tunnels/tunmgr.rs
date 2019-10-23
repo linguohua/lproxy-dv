@@ -119,7 +119,13 @@ impl TunMgr {
     }
 
     pub fn on_tunnel_created(&mut self, tun: Rc<RefCell<Tunnel>>) -> Result<(), ()> {
-        let id = tun.borrow().tunnel_id;
+        let id;
+        {
+            let rf = tun.borrow();
+            id = rf.tunnel_id;
+            rf.account.borrow_mut().remember(id);
+        }
+
         self.tunnels_map.insert(id, tun);
 
         Ok(())
@@ -128,6 +134,7 @@ impl TunMgr {
     pub fn on_tunnel_closed(&mut self, tun: Rc<RefCell<Tunnel>>) {
         let mut tun = tun.borrow_mut();
         let id = tun.tunnel_id;
+        tun.account.borrow_mut().forget(id);
         self.tunnels_map.remove(&id);
 
         tun.on_closed();
@@ -260,6 +267,38 @@ impl TunMgr {
 
                 return v;
             }
+        }
+    }
+
+    pub fn kickout_uuid(&mut self, uuid: String) {
+        let ua = self.account_map.remove(&uuid);
+        match ua {
+            Some(u) => {
+                let u = u.borrow();
+                let tunnel_ids = &u.my_tunnels_ids.to_vec(); // create a new copy
+                for n in tunnel_ids.iter() {
+                    match self.tunnels_map.get(&n) {
+                        Some(t) => {
+                            info!("[TunMgr] kickout_uuid, tunnel id:{}", n);
+                            t.borrow().close_rawfd();
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            None => {}
+        }
+    }
+
+    pub fn account_cfg_changed(&mut self, notify: myrpc::CfgChangeNotify) {
+        let uuid = &notify.uuid;
+        let ua = self.account_map.get(uuid);
+        match ua {
+            Some(u) => {
+                u.borrow_mut()
+                    .set_new_quota_per_second(notify.kb_per_second);
+            }
+            None => {}
         }
     }
 }

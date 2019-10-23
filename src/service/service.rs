@@ -12,14 +12,14 @@ const STATE_STOPPED: u8 = 0;
 const STATE_STARTING: u8 = 1;
 const STATE_RUNNING: u8 = 2;
 const STATE_STOPPING: u8 = 3;
-use super::{RpcServer, SubServiceCtl, SubServiceCtlCmd};
+use super::{RpcServer, SubServiceCtl, SubServiceCtlCmd, SubServiceType};
 use fnv::FnvHashMap as HashMap;
 use grpcio::{ChannelBuilder, ChannelCredentialsBuilder, Environment};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
-type LongLive = Rc<RefCell<Service>>;
+pub type LongLiveS = Rc<RefCell<Service>>;
 
 pub struct BandwidthReport {
     pub send: u64,
@@ -44,6 +44,8 @@ pub enum Instruction {
     ServiceMonitor,
 
     ReportBandwidth(BandwidthReportMap),
+    Kickout(String),
+    CfgChangeNotify(myrpc::CfgChangeNotify),
 }
 
 impl fmt::Display for Instruction {
@@ -57,6 +59,8 @@ impl fmt::Display for Instruction {
             Instruction::UpdateEtcdConfig => s = "UpdateEtcdConfig",
             Instruction::ServiceMonitor => s = "ServiceMonitor",
             Instruction::ReportBandwidth(_) => s = "ReportBandwidth",
+            Instruction::Kickout(_) => s = "Kickout",
+            Instruction::CfgChangeNotify(_) => s = "CfgChangeNotify",
         }
         write!(f, "({})", s)
     }
@@ -80,7 +84,7 @@ pub struct Service {
 }
 
 impl Service {
-    pub fn new(cfg: config::ServerCfg) -> LongLive {
+    pub fn new(cfg: config::ServerCfg) -> LongLiveS {
         let rpcser = RpcServer::new(&cfg);
         Rc::new(RefCell::new(Service {
             subservices: Vec::new(),
@@ -97,15 +101,15 @@ impl Service {
     }
 
     // start config monitor
-    pub fn start(&mut self, s: LongLive) {
+    pub fn start(&mut self, s: LongLiveS) {
         if self.state == STATE_STOPPED {
             self.state = STATE_STARTING;
-
-            self.rpc_server.start().unwrap();
 
             let (tx, rx) = futures::sync::mpsc::unbounded();
             let (trigger, tripwire) = Tripwire::new();
             self.save_instruction_trigger(trigger);
+
+            self.rpc_server.start(tx.clone()).unwrap();
 
             let clone = s.clone();
             let fut = rx
@@ -140,7 +144,7 @@ impl Service {
         }
     }
 
-    fn do_load_cfg_from_etcd(s: LongLive) {
+    fn do_load_cfg_from_etcd(s: LongLiveS) {
         let s2 = s.clone();
         let s3 = s.clone();
         let rf = s.borrow();
@@ -170,7 +174,7 @@ impl Service {
         current_thread::spawn(fut);
     }
 
-    fn do_update_cfg_from_etcd(s: LongLive) {
+    fn do_update_cfg_from_etcd(s: LongLiveS) {
         let s2 = s.clone();
         let s3 = s.clone();
         let rf = s.borrow();
@@ -217,6 +221,46 @@ impl Service {
         }
     }
 
+    fn do_kickout(s: LongLiveS, uuid: String) {
+        let rf = s.borrow();
+        for ss in rf.subservices.iter() {
+            match ss.sstype {
+                SubServiceType::TunMgr => {
+                    if ss.ctl_tx.is_some() {
+                        let cmd = SubServiceCtlCmd::Kickout(uuid.to_string());
+                        match ss.ctl_tx.as_ref().unwrap().unbounded_send(cmd) {
+                            Err(e) => {
+                                error!("[Service] send update etcdcfg to listener failed:{}", e);
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn do_cfgchanged_notify(s: LongLiveS, notify: myrpc::CfgChangeNotify) {
+        let rf = s.borrow();
+        for ss in rf.subservices.iter() {
+            match ss.sstype {
+                SubServiceType::TunMgr => {
+                    if ss.ctl_tx.is_some() {
+                        let cmd = SubServiceCtlCmd::CfgChangeNotify(notify.clone());
+                        match ss.ctl_tx.as_ref().unwrap().unbounded_send(cmd) {
+                            Err(e) => {
+                                error!("[Service] send update etcdcfg to listener failed:{}", e);
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
     fn save_etcd_cfg(&mut self, etcdcfg: config::EtcdConfig) {
         self.etcdcfg = Some(std::sync::Arc::new(etcdcfg));
         self.build_grpc_client();
@@ -241,7 +285,7 @@ impl Service {
         }
     }
 
-    fn do_etcd_monitor(s: LongLive) {
+    fn do_etcd_monitor(s: LongLiveS) {
         info!("[Service] do_etcd_monitor called");
         let s2 = s.clone();
         let s3 = s.clone();
@@ -285,7 +329,7 @@ impl Service {
         current_thread::spawn(fut);
     }
 
-    fn do_update_etcd_instance_ttl(s: LongLive) {
+    fn do_update_etcd_instance_ttl(s: LongLiveS) {
         let rf = s.borrow();
         let server_cfg = rf.tuncfg.as_ref().unwrap();
         if server_cfg.etcd_addr.len() < 1 {
@@ -304,14 +348,14 @@ impl Service {
         current_thread::spawn(fut);
     }
 
-    fn do_service_monitor(s: LongLive) {
+    fn do_service_monitor(s: LongLiveS) {
         Service::do_update_etcd_instance_ttl(s.clone());
 
         // report to grpc
         Service::do_flow_report(s);
     }
 
-    fn do_flow_report(s: LongLive) {
+    fn do_flow_report(s: LongLiveS) {
         let s1 = s.clone();
         let mut rf = s.borrow_mut();
 
@@ -373,7 +417,7 @@ impl Service {
         }
     }
 
-    fn do_bandwidth_merge(s: LongLive, mut bwm: BandwidthReportMap) {
+    fn do_bandwidth_merge(s: LongLiveS, mut bwm: BandwidthReportMap) {
         // info!("[Service]do_bandwidth_merge, len:{}", bwm.len());
         let mut rf = s.borrow_mut();
         for (uuid, t) in bwm.drain() {
@@ -414,7 +458,7 @@ impl Service {
         self.fire_instruction(Instruction::Restart);
     }
 
-    fn process_instruction(s: LongLive, ins: Instruction) {
+    fn process_instruction(s: LongLiveS, ins: Instruction) {
         match ins {
             Instruction::StartSubServices => {
                 Service::do_start_subservices(s.clone());
@@ -437,10 +481,16 @@ impl Service {
             Instruction::ReportBandwidth(bw) => {
                 Service::do_bandwidth_merge(s, bw);
             }
+            Instruction::Kickout(uuid) => {
+                Service::do_kickout(s, uuid);
+            }
+            Instruction::CfgChangeNotify(notify) => {
+                Service::do_cfgchanged_notify(s, notify);
+            }
         }
     }
 
-    fn delay_post_instruction(s: LongLive, seconds: u64, ins: Instruction) {
+    fn delay_post_instruction(s: LongLiveS, seconds: u64, ins: Instruction) {
         info!(
             "[Service]delay_post_instruction, seconds:{}, ins:{}",
             seconds, ins
@@ -466,7 +516,7 @@ impl Service {
         current_thread::spawn(task);
     }
 
-    fn do_start_subservices(s: LongLive) {
+    fn do_start_subservices(s: LongLiveS) {
         info!("[Service]do_start_subservices");
         let cfg;
         {
@@ -515,7 +565,7 @@ impl Service {
         current_thread::spawn(fut);
     }
 
-    fn do_restart(s1: LongLive) {
+    fn do_restart(s1: LongLiveS) {
         info!("[Service]do_restart");
         let mut s = s1.borrow_mut();
         s.stop();
@@ -549,7 +599,7 @@ impl Service {
         self.monitor_trigger = Some(trigger);
     }
 
-    fn start_monitor_timer(&mut self, s2: LongLive) {
+    fn start_monitor_timer(&mut self, s2: LongLiveS) {
         info!("[Service]start_monitor_timer");
         let (trigger, tripwire) = Tripwire::new();
         self.save_monitor_trigger(trigger);

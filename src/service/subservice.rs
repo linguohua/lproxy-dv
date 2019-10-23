@@ -1,4 +1,5 @@
 use crate::config::{EtcdConfig, ServerCfg};
+use crate::myrpc;
 use crate::tlsserver::{Listener, WSStreamInfo};
 use crate::tunnels;
 use futures::future::lazy;
@@ -17,6 +18,8 @@ pub enum SubServiceCtlCmd {
     Stop,
     TcpTunnel(WSStreamInfo),
     UpdateEtcdCfg(Arc<EtcdConfig>),
+    Kickout(String),
+    CfgChangeNotify(myrpc::CfgChangeNotify),
 }
 
 pub enum SubServiceType {
@@ -31,6 +34,8 @@ impl fmt::Display for SubServiceCtlCmd {
             SubServiceCtlCmd::Stop => s = "Stop",
             SubServiceCtlCmd::TcpTunnel(_) => s = "TcpTunnel",
             SubServiceCtlCmd::UpdateEtcdCfg(_) => s = "UpdateEtcdCfg",
+            SubServiceCtlCmd::Kickout(_) => s = "Kickout",
+            SubServiceCtlCmd::CfgChangeNotify(_) => s = "CfgChangeNotify",
         }
         write!(f, "({})", s)
     }
@@ -145,6 +150,14 @@ fn start_one_tunmgr(
                     SubServiceCtlCmd::UpdateEtcdCfg(cfg) => {
                         let f = tunmgr.clone();
                         f.borrow_mut().update_etcd_cfg(&cfg);
+                    }
+                    SubServiceCtlCmd::Kickout(uuid) => {
+                        let f = tunmgr.clone();
+                        f.borrow_mut().kickout_uuid(uuid);
+                    }
+                    SubServiceCtlCmd::CfgChangeNotify(cfg) => {
+                        let f = tunmgr.clone();
+                        f.borrow_mut().account_cfg_changed(cfg);
                     } // _ => {
                       //     error!("[SubService]tunmgr unknown ctl cmd:{}", cmd);
                       // }

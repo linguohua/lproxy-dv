@@ -1,6 +1,7 @@
+use super::{Instruction, TxType};
 use crate::{config, myrpc};
 use grpcio;
-use log::info;
+use log::{error, info};
 use std::fs::File;
 use std::io::{Error, ErrorKind, Read, Result};
 use std::sync::Arc;
@@ -24,12 +25,12 @@ impl RpcServer {
         }
     }
 
-    pub fn start(&mut self) -> Result<()> {
+    pub fn start(&mut self, s: TxType) -> Result<()> {
         let e = Arc::new(grpcio::Environment::new(1));
         let sb = grpcio::ServerBuilder::new(e);
         let credentials = pkcs12_to_server_credentials(&self.pkcs12, &self.pkcs12_passwd)?;
         let sb = sb.bind_secure(&self.addr, self.port, credentials);
-        let dvi = DvExportImpl {};
+        let dvi = DvExportImpl { ref_service_tx: s };
         let service = myrpc::create_dv_export(dvi);
         let sb = sb.register_service(service);
 
@@ -47,29 +48,49 @@ impl RpcServer {
 }
 
 #[derive(Clone)]
-struct DvExportImpl {}
+struct DvExportImpl {
+    ref_service_tx: TxType,
+}
 
 impl myrpc::DvExport for DvExportImpl {
     fn kickout_uuid(
         &mut self,
         _ctx: ::grpcio::RpcContext,
-        _req: myrpc::Kickout,
+        req: myrpc::Kickout,
         sink: ::grpcio::UnarySink<myrpc::Empty>,
     ) {
         //
         info!("[gRpcServer] kickout_uuid called");
         let rsp = myrpc::Empty::default();
+        let ins = Instruction::Kickout(req.uuid);
+
+        match self.ref_service_tx.unbounded_send(ins) {
+            Err(e) => {
+                error!("[gRpcServer] kickout_uuid unbounded_send failed:{}", e);
+            }
+            _ => {}
+        }
+
         sink.success(rsp);
     }
 
     fn uuid_cfg_changed(
         &mut self,
         _ctx: ::grpcio::RpcContext,
-        _req: myrpc::CfgChangeNotify,
+        req: myrpc::CfgChangeNotify,
         sink: ::grpcio::UnarySink<myrpc::Empty>,
     ) {
         //
         info!("[gRpcServer] uuid_cfg_changed called");
+        let ins = Instruction::CfgChangeNotify(req);
+
+        match self.ref_service_tx.unbounded_send(ins) {
+            Err(e) => {
+                error!("[gRpcServer] uuid_cfg_changed unbounded_send failed:{}", e);
+            }
+            _ => {}
+        }
+
         let rsp = myrpc::Empty::default();
         sink.success(rsp);
     }

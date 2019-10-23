@@ -19,6 +19,8 @@ pub struct UserAccount {
     wait_tasks: Vec<Task>,
     wait_tunnels: Vec<WSStreamInfo>,
     tm: super::LongLiveTM,
+
+    pub my_tunnels_ids: Vec<usize>,
 }
 
 impl UserAccount {
@@ -32,6 +34,7 @@ impl UserAccount {
             quota_per_second: 0,
             wait_tasks: Vec::with_capacity(20),
             wait_tunnels: Vec::with_capacity(20),
+            my_tunnels_ids: Vec::with_capacity(20),
             tm,
         };
 
@@ -85,6 +88,10 @@ impl UserAccount {
 
     pub fn set_need_pull(&mut self, need_pull: bool) {
         self.need_cfg_pull = need_pull;
+    }
+
+    pub fn set_new_quota_per_second(&mut self, bandwidth_limit_kbs: u64) {
+        self.quota_per_second = (bandwidth_limit_kbs * 1000) as usize;
     }
 
     pub fn serve_tunnel_create(&mut self, wsinfo: WSStreamInfo, ll: LongLiveUA) {
@@ -188,5 +195,13 @@ impl UserAccount {
 
     fn on_cfg_pull_failed(&mut self) {
         self.wait_tunnels.clear();
+    }
+
+    pub fn remember(&mut self, tunnel_id: usize) {
+        self.my_tunnels_ids.push(tunnel_id);
+    }
+
+    pub fn forget(&mut self, tunnel_id: usize) {
+        self.my_tunnels_ids.retain(|&x| x != tunnel_id);
     }
 }
