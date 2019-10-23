@@ -7,12 +7,7 @@ use log::{debug, info};
 use tokio;
 use tokio::runtime::current_thread;
 
-pub fn serve_websocket(
-    wsinfo: WSStreamInfo,
-    has_flowctl: bool,
-    account: LongLiveUA,
-    s: LongLiveTM,
-) {
+pub fn serve_websocket(wsinfo: WSStreamInfo, tun_quota: u32, account: LongLiveUA, s: LongLiveTM) {
     let mut wsinfo = wsinfo;
     let ws_stream = wsinfo.ws.take().unwrap();
 
@@ -48,7 +43,7 @@ pub fn serve_websocket(
         rf.dns_server_addr,
         tunnel_cap,
         tunnel_req_quota,
-        has_flowctl,
+        tun_quota,
         account,
         is_dns,
     );

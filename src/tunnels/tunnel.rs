@@ -57,14 +57,24 @@ impl Tunnel {
         dns_server_addr: Option<SocketAddr>,
         cap: usize,
         req_quota: u32,
-        has_flowctl: bool,
+        tun_quota: u32,
         account: LongLiveUA,
         is_for_dns: bool,
     ) -> LongLiveTun {
-        info!(
-            "[Tunnel]new Tunnel, idx:{}, cap:{}, dns:{:?}, flowctl enable:{}, quota:{}",
-            tid, cap, dns_server_addr, has_flowctl, req_quota,
-        );
+        let has_flowctl;
+        if is_for_dns {
+            has_flowctl = false;
+            info!(
+                "[Tunnel]new dns Tunnel, idx:{}, dns:{:?}",
+                tid, dns_server_addr
+            );
+        } else {
+            has_flowctl = tun_quota > 0;
+            info!(
+                "[Tunnel]new Tunnel, idx:{}, cap:{}, flowctl enable:{}, tun_quota:{}, req_quota:{}",
+                tid, cap, has_flowctl, tun_quota, req_quota,
+            );
+        }
 
         Rc::new(RefCell::new(Tunnel {
             tunnel_id: tid,

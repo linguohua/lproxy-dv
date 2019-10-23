@@ -60,6 +60,13 @@ impl TunMgr {
         info!("[TunMgr] TunMgr update update_etcd_cfg");
         self.grpc_addr = etcdcfg.hub_grpc_addr.to_string();
         self.grpc_client = None;
+
+        let has_grpc = self.has_grpc();
+        let account_map = &self.account_map;
+        for (_, a) in account_map.iter() {
+            let mut a = a.borrow_mut();
+            a.set_need_pull(has_grpc);
+        }
     }
 
     pub fn next_tunnel_id(&mut self) -> usize {

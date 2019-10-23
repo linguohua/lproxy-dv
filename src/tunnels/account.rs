@@ -83,6 +83,10 @@ impl UserAccount {
         return self.quota_per_second > 0;
     }
 
+    pub fn set_need_pull(&mut self, need_pull: bool) {
+        self.need_cfg_pull = need_pull;
+    }
+
     pub fn serve_tunnel_create(&mut self, wsinfo: WSStreamInfo, ll: LongLiveUA) {
         if self.need_cfg_pull {
             self.wait_tunnels.push(wsinfo);
@@ -92,7 +96,7 @@ impl UserAccount {
             return;
         }
 
-        super::serve_websocket(wsinfo, self.has_flowctl(), ll, self.tm.clone());
+        super::serve_websocket(wsinfo, self.quota_per_second as u32, ll, self.tm.clone());
     }
 
     fn start_pull_cfg(&mut self, ll: LongLiveUA) {
@@ -168,7 +172,12 @@ impl UserAccount {
         loop {
             match self.wait_tunnels.pop() {
                 Some(wsinfo) => {
-                    super::serve_websocket(wsinfo, self.has_flowctl(), ll.clone(), self.tm.clone());
+                    super::serve_websocket(
+                        wsinfo,
+                        self.quota_per_second as u32,
+                        ll.clone(),
+                        self.tm.clone(),
+                    );
                 }
                 None => {
                     return;
