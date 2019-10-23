@@ -38,7 +38,6 @@ pub struct Listener {
     pkcs12: String,
     pkcs12_password: String,
     tun_path: String,
-    dns_tun_path: String,
     token_key: String,
 }
 
@@ -52,7 +51,6 @@ impl Listener {
             pkcs12_password: cfg.pkcs12_password.to_string(),
             tun_path: etcdcfg.tun_path.to_string(),
             token_key: cfg.token_key.to_string(),
-            dns_tun_path: etcdcfg.dns_tun_path.to_string(),
         }))
     }
 
@@ -68,7 +66,6 @@ impl Listener {
         info!("[Server] listener update update_etcd_cfg");
 
         self.tun_path = etcdcfg.tun_path.to_string();
-        self.dns_tun_path = etcdcfg.dns_tun_path.to_string();
     }
 
     fn start_server(&mut self, ll: LongLive) -> Result<(), Error> {
@@ -117,10 +114,9 @@ impl Listener {
                                 let lstream = lws::LwsFramed::new(lsocket, None);
                                 let s = ll.clone();
                                 let mut s = s.borrow_mut();
-                                if p.contains(&s.dns_tun_path) {
-                                    s.on_accept_proxy_websocket(rawfd, lstream, true, p);
-                                } else if p.contains(&s.tun_path) {
-                                    s.on_accept_proxy_websocket(rawfd, lstream, false, p);
+                                let dns = find_str_from_query_string(&p, "dns=");
+                                if p.contains(&s.tun_path) {
+                                    s.on_accept_proxy_websocket(rawfd, lstream, dns == "1", p);
                                 }
                             }
 

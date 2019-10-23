@@ -7,13 +7,11 @@ use std::fmt;
 
 const ETCD_CFG_ROOT: &str = "/dv/global/";
 const ETCD_CFG_TUN_PATH: &str = "/dv/global/tun_path";
-const ETCD_CFG_DNS_TUN_PATH: &str = "/dv/global/dns_tun_path";
 const ETCD_CFG_HUB_GRPC_ADDR: &str = "/dv/global/hub_grpc_addr";
 const ETCD_CFG_DV_INSTANCE_ROOT: &str = "/dv/instances";
 
 pub struct EtcdConfig {
     pub tun_path: String,
-    pub dns_tun_path: String,
     pub hub_grpc_addr: String,
 }
 
@@ -21,8 +19,8 @@ impl fmt::Display for EtcdConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "(tun_path:{}, dns_tun_path:{}, grpc_addr:{})",
-            self.tun_path, self.dns_tun_path, self.hub_grpc_addr
+            "(tun_path:{}, grpc_addr:{})",
+            self.tun_path, self.hub_grpc_addr
         )
     }
 }
@@ -57,25 +55,17 @@ impl EtcdConfig {
 
             //println!("etcd get tun path ok:{}", tun_path);
 
-            let get_request2 = kv::get(&client, ETCD_CFG_DNS_TUN_PATH, kv::GetOptions::default());
-            get_request2.and_then(move |response2| {
-                let tun_path2 = response2.data.node.value.unwrap();
-                //println!("etcd get dns tun path ok:{}", tun_path2);
+            let get_request2 = kv::get(&client, ETCD_CFG_HUB_GRPC_ADDR, kv::GetOptions::default());
+            get_request2.and_then(move |response3| {
+                let grpc_addr = response3.data.node.value.unwrap();
+                //println!("etcd get grpc address ok:{}", grpc_addr);
 
-                let get_request3 =
-                    kv::get(&client, ETCD_CFG_HUB_GRPC_ADDR, kv::GetOptions::default());
-                get_request3.and_then(move |response3| {
-                    let grpc_addr = response3.data.node.value.unwrap();
-                    //println!("etcd get grpc address ok:{}", grpc_addr);
+                let ecfg = EtcdConfig {
+                    tun_path,
+                    hub_grpc_addr: grpc_addr,
+                };
 
-                    let ecfg = EtcdConfig {
-                        tun_path,
-                        dns_tun_path: tun_path2,
-                        hub_grpc_addr: grpc_addr,
-                    };
-
-                    Ok(ecfg)
-                })
+                Ok(ecfg)
             })
         });
 

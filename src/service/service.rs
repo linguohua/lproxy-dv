@@ -127,7 +127,6 @@ impl Service {
             } else {
                 let etcdcfg = config::EtcdConfig {
                     tun_path: server_cfg.tun_path.to_string(),
-                    dns_tun_path: server_cfg.dns_tun_path.to_string(),
                     hub_grpc_addr: String::default(),
                 };
 
