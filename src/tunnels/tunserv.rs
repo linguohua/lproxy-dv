@@ -1,13 +1,19 @@
 use super::new_forward_ex;
 use super::Tunnel;
-use super::{LongLiveTM, LongLiveUA};
+use super::{LongLiveTM, LongLiveUA, UserAccount};
 use crate::tlsserver::WSStreamInfo;
 use futures::{Future, Stream};
 use log::{debug, info};
 use tokio;
 use tokio::runtime::current_thread;
 
-pub fn serve_websocket(wsinfo: WSStreamInfo, tun_quota: u32, account: LongLiveUA, s: LongLiveTM) {
+pub fn serve_websocket(
+    wsinfo: WSStreamInfo,
+    tun_quota: u32,
+    accref: &mut UserAccount,
+    account: LongLiveUA,
+    s: LongLiveTM,
+) {
     let mut wsinfo = wsinfo;
     let ws_stream = wsinfo.ws.take().unwrap();
 
@@ -48,7 +54,7 @@ pub fn serve_websocket(wsinfo: WSStreamInfo, tun_quota: u32, account: LongLiveUA
         is_dns,
     );
 
-    if let Err(_) = rf.on_tunnel_created(t.clone()) {
+    if let Err(_) = rf.on_tunnel_created(accref, t.clone()) {
         // DROP all
         return;
     }

@@ -103,7 +103,13 @@ impl UserAccount {
             return;
         }
 
-        super::serve_websocket(wsinfo, self.quota_per_second as u32, ll, self.tm.clone());
+        super::serve_websocket(
+            wsinfo,
+            self.quota_per_second as u32,
+            self,
+            ll,
+            self.tm.clone(),
+        );
     }
 
     fn start_pull_cfg(&mut self, ll: LongLiveUA) {
@@ -182,6 +188,7 @@ impl UserAccount {
                     super::serve_websocket(
                         wsinfo,
                         self.quota_per_second as u32,
+                        self,
                         ll.clone(),
                         self.tm.clone(),
                     );

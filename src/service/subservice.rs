@@ -149,15 +149,15 @@ fn start_one_tunmgr(
                     }
                     SubServiceCtlCmd::UpdateEtcdCfg(cfg) => {
                         let f = tunmgr.clone();
-                        f.borrow_mut().update_etcd_cfg(&cfg);
+                        f.borrow_mut().on_update_etcd_cfg(&cfg);
                     }
                     SubServiceCtlCmd::Kickout(uuid) => {
                         let f = tunmgr.clone();
-                        f.borrow_mut().kickout_uuid(uuid);
+                        f.borrow_mut().on_kickout_uuid(uuid);
                     }
                     SubServiceCtlCmd::CfgChangeNotify(cfg) => {
                         let f = tunmgr.clone();
-                        f.borrow_mut().account_cfg_changed(cfg);
+                        f.borrow_mut().on_account_cfg_changed(cfg);
                     } // _ => {
                       //     error!("[SubService]tunmgr unknown ctl cmd:{}", cmd);
                       // }

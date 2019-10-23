@@ -56,7 +56,7 @@ impl TunMgr {
         Ok(())
     }
 
-    pub fn update_etcd_cfg(&mut self, etcdcfg: &EtcdConfig) {
+    pub fn on_update_etcd_cfg(&mut self, etcdcfg: &EtcdConfig) {
         info!("[TunMgr] TunMgr update update_etcd_cfg");
         self.grpc_addr = etcdcfg.hub_grpc_addr.to_string();
         self.grpc_client = None;
@@ -118,12 +118,16 @@ impl TunMgr {
         }
     }
 
-    pub fn on_tunnel_created(&mut self, tun: Rc<RefCell<Tunnel>>) -> Result<(), ()> {
+    pub fn on_tunnel_created(
+        &mut self,
+        accref: &mut super::UserAccount,
+        tun: Rc<RefCell<Tunnel>>,
+    ) -> Result<(), ()> {
         let id;
         {
             let rf = tun.borrow();
             id = rf.tunnel_id;
-            rf.account.borrow_mut().remember(id);
+            accref.remember(id);
         }
 
         self.tunnels_map.insert(id, tun);
@@ -270,7 +274,7 @@ impl TunMgr {
         }
     }
 
-    pub fn kickout_uuid(&mut self, uuid: String) {
+    pub fn on_kickout_uuid(&mut self, uuid: String) {
         let ua = self.account_map.remove(&uuid);
         match ua {
             Some(u) => {
@@ -290,7 +294,7 @@ impl TunMgr {
         }
     }
 
-    pub fn account_cfg_changed(&mut self, notify: myrpc::CfgChangeNotify) {
+    pub fn on_account_cfg_changed(&mut self, notify: myrpc::CfgChangeNotify) {
         let uuid = &notify.uuid;
         let ua = self.account_map.get(uuid);
         match ua {
