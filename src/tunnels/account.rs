@@ -2,7 +2,6 @@ use crate::config::QUOTA_RESET_INTERVAL;
 use crate::myrpc;
 use crate::tlsserver::WSStreamInfo;
 use futures::task::Task;
-use grpcio::{ChannelBuilder, ChannelCredentialsBuilder};
 use log::error;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -23,8 +22,8 @@ pub struct UserAccount {
 }
 
 impl UserAccount {
-    pub fn new(uuid: String, tm: super::LongLiveTM) -> LongLiveUA {
-        let need_cfg_pull = tm.borrow().has_grpc();
+    pub fn new(uuid: String, has_grpc: bool, tm: super::LongLiveTM) -> LongLiveUA {
+        let need_cfg_pull = has_grpc;
         let v = UserAccount {
             uuid,
             need_cfg_pull,
@@ -102,19 +101,12 @@ impl UserAccount {
         }
 
         self.is_in_pulling = true;
-        let e;
+
+        let client;
         {
-            e = self.tm.borrow().get_e();
+            client = self.tm.borrow_mut().get_grpc_client();
         }
 
-        let grpc_addr;
-        {
-            grpc_addr = self.tm.borrow().get_grpc_addr();
-        }
-
-        let cre = ChannelCredentialsBuilder::new().build();
-        let channel = ChannelBuilder::new(e).secure_connect(&grpc_addr, cre); // TODO
-        let client = myrpc::DeviceCfgPullClient::new(channel);
         let mut pull = myrpc::CfgPullRequest::new();
         pull.set_uuid(self.uuid.to_string());
 
@@ -139,6 +131,16 @@ impl UserAccount {
                     .map_err(move |e| {
                         error!("[UserAccount]start_pull_cfg, grpc error:{}", e);
                         let mut rf = ll2.borrow_mut();
+                        match e {
+                            grpcio::Error::RpcFailure(s) => {
+                                if s.status == grpcio::RpcStatusCode::Unavailable {
+                                    // notify tm, it's grpc client need to rebuild
+                                    rf.tm.borrow_mut().invalid_grpc_client();
+                                }
+                            }
+                            _ => {}
+                        }
+
                         rf.is_in_pulling = false;
                         rf.on_cfg_pull_failed();
                         ()

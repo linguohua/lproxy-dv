@@ -1,9 +1,10 @@
 use super::Tunnel;
 use crate::config::{EtcdConfig, ServerCfg, KEEPALIVE_INTERVAL, QUOTA_RESET_INTERVAL};
+use crate::myrpc;
 use crate::service::{BandwidthReport, BandwidthReportMap, Instruction, TxType};
 use failure::Error;
 use fnv::FnvHashMap as HashMap;
-use grpcio::Environment;
+use grpcio::{ChannelBuilder, ChannelCredentialsBuilder, Environment};
 use log::{debug, error, info};
 use std::cell::RefCell;
 use std::net::SocketAddr;
@@ -28,14 +29,13 @@ pub struct TunMgr {
     ins_tx: TxType,
     pub token_key: String,
     account_map: HashMap<String, super::LongLiveUA>,
-    grpc_e: Arc<Environment>,
     grpc_addr: String,
+    grpc_client: Option<Arc<myrpc::DeviceCfgPullClient>>,
 }
 
 impl TunMgr {
     pub fn new(cfg: &ServerCfg, etcdcfg: &EtcdConfig, ins_tx: TxType) -> LongLive {
         let dns_server_addr = Some(cfg.dns_server_addr.parse().unwrap());
-        let grpc_e = Arc::new(Environment::new(1));
         let token_key = cfg.token_key.to_string();
         Rc::new(RefCell::new(TunMgr {
             tunnel_id: 0,
@@ -46,8 +46,8 @@ impl TunMgr {
             dns_server_addr,
             ins_tx,
             token_key,
-            grpc_e,
             grpc_addr: etcdcfg.hub_grpc_addr.to_string(),
+            grpc_client: None,
         }))
     }
 
@@ -59,6 +59,7 @@ impl TunMgr {
     pub fn update_etcd_cfg(&mut self, etcdcfg: &EtcdConfig) {
         info!("[TunMgr] TunMgr update update_etcd_cfg");
         self.grpc_addr = etcdcfg.hub_grpc_addr.to_string();
+        self.grpc_client = None;
     }
 
     pub fn next_tunnel_id(&mut self) -> usize {
@@ -68,12 +69,25 @@ impl TunMgr {
         id
     }
 
-    pub fn get_e(&self) -> Arc<Environment> {
-        self.grpc_e.clone()
+    pub fn invalid_grpc_client(&mut self) {
+        self.grpc_client = None;
     }
 
-    pub fn get_grpc_addr(&self) -> String {
-        self.grpc_addr.to_string()
+    pub fn get_grpc_client(&mut self) -> Arc<myrpc::DeviceCfgPullClient> {
+        if self.grpc_client.is_some() {
+            return self.grpc_client.as_ref().unwrap().clone();
+        }
+
+        let cre = ChannelCredentialsBuilder::new().build();
+        let grpc_e = Arc::new(Environment::new(1));
+        let channel = ChannelBuilder::new(grpc_e).secure_connect(&self.grpc_addr, cre); // TODO
+        let client = myrpc::DeviceCfgPullClient::new(channel);
+
+        let client = Arc::new(client);
+        let rt = client.clone();
+        self.grpc_client = Some(client);
+
+        rt
     }
 
     pub fn has_grpc(&self) -> bool {
@@ -234,7 +248,7 @@ impl TunMgr {
                 return a.clone();
             }
             None => {
-                let v = super::UserAccount::new(uuid.to_string(), ll);
+                let v = super::UserAccount::new(uuid.to_string(), self.has_grpc(), ll);
                 self.account_map.insert(uuid.to_string(), v.clone());
 
                 return v;
