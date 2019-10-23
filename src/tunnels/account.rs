@@ -175,6 +175,10 @@ impl UserAccount {
 
     fn on_cfg_pull_completed(&mut self, rsp: myrpc::CfgPullResult, ll: LongLiveUA) {
         if rsp.code != 0 {
+            error!(
+                "[UserAccount]on_cfg_pull_completed, uuid:{}, hub server reject, code:{}",
+                self.uuid, rsp.code
+            );
             self.on_cfg_pull_failed();
             return;
         }
