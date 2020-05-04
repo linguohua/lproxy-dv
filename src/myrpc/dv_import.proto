@@ -1,5 +1,9 @@
 syntax = "proto3";
 
+// protoc --rust_out=. --grpc_out=. --plugin=protoc-gen-grpc=`which grpc_rust_plugin` dv_import.proto
+// if protobuffer tool version not match with newest protobuf rust lib, need to update:
+// cargo install protobuf-codegen
+// cargo install grpcio-compiler
 service BandwidthReport {
     rpc Report(BandwidthStatistics) returns (ReportResult) {}
 }

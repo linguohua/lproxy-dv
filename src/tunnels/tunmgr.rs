@@ -255,7 +255,7 @@ impl TunMgr {
             .then(|_| {
                 info!("[TunMgr] keepalive timer future completed");
                 Ok(())
-            });;
+            });
 
         current_thread::spawn(task);
     }

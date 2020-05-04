@@ -63,7 +63,7 @@ pub trait BandwidthReport {
 
 pub fn create_bandwidth_report<S: BandwidthReport + Send + Clone + 'static>(s: S) -> ::grpcio::Service {
     let mut builder = ::grpcio::ServiceBuilder::new();
-    let mut instance = s.clone();
+    let mut instance = s;
     builder = builder.add_unary_handler(&METHOD_BANDWIDTH_REPORT_REPORT, move |ctx, req, resp| {
         instance.report(ctx, req, resp)
     });
@@ -115,7 +115,7 @@ pub trait DeviceCfgPull {
 
 pub fn create_device_cfg_pull<S: DeviceCfgPull + Send + Clone + 'static>(s: S) -> ::grpcio::Service {
     let mut builder = ::grpcio::ServiceBuilder::new();
-    let mut instance = s.clone();
+    let mut instance = s;
     builder = builder.add_unary_handler(&METHOD_DEVICE_CFG_PULL_PULL_CFG, move |ctx, req, resp| {
         instance.pull_cfg(ctx, req, resp)
     });

@@ -91,7 +91,7 @@ pub fn create_dv_export<S: DvExport + Send + Clone + 'static>(s: S) -> ::grpcio:
     builder = builder.add_unary_handler(&METHOD_DV_EXPORT_KICKOUT_UUID, move |ctx, req, resp| {
         instance.kickout_uuid(ctx, req, resp)
     });
-    let mut instance = s.clone();
+    let mut instance = s;
     builder = builder.add_unary_handler(&METHOD_DV_EXPORT_UUID_CFG_CHANGED, move |ctx, req, resp| {
         instance.uuid_cfg_changed(ctx, req, resp)
     });
