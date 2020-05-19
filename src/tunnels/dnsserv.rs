@@ -1,39 +1,45 @@
 use super::{LongLiveTun, Tunnel};
-use futures::try_ready;
+use futures::ready;
+use futures::prelude::*;
 use log::error;
 use std::net::SocketAddr;
-use std::time::{Duration, Instant};
+use std::time::{Duration};
 use tokio::net::UdpSocket;
-use tokio::prelude::*;
-use tokio::runtime::current_thread;
-use tokio::timer::Delay;
+use tokio::time::Delay;
+use std::pin::Pin;
+use futures::task::{Context, Poll};
+use std::io::Error;
 
-pub fn proxy_dns(t: &Tunnel, tl: LongLiveTun, msg_buf: Vec<u8>, port: u16, ip32: u32) {
-    let addr = t.dns_server_addr.as_ref().unwrap();
+pub fn proxy_dns(_: &Tunnel, tl: LongLiveTun, msg_buf: Vec<u8>, port: u16, ip32: u32) {
+    
     let local_addr: SocketAddr = "0.0.0.0:0".parse().unwrap();
-    let udp = UdpSocket::bind(&local_addr).unwrap();
+    let socket_udp = std::net::UdpSocket::bind(local_addr).unwrap();
+    let mut udp = UdpSocket::from_std(socket_udp).unwrap();
 
     // FOR DNS msg, 600 should be enough
     const MAX_DATAGRAM_SIZE: usize = 600;
-    let fut = udp
-        .send_dgram(msg_buf, addr)
-        .and_then(move |(socket, _)| {
-            // timeout with 2 seconds
-            let timeout = 2000;
-            let rd = RecvDgram::new(socket, vec![0u8; MAX_DATAGRAM_SIZE], timeout);
-            let recv_fut = rd.and_then(move |(_, data, len, _)| {
-                tl.borrow().on_dns_reply(data, len, port, ip32);
-                Ok(())
-            });
+    let fut = async move {
+        let tl2 = tl.clone();
+        let addr = tl.borrow().dns_server_addr.as_ref().unwrap().to_string();
+        match udp.send_to(&msg_buf, addr).await {
+            Ok(_) => {
+                let timeout = 2000;
+                match RecvDgram::new(udp, vec![0u8; MAX_DATAGRAM_SIZE], timeout).await {
+                    Ok((_, data, len, _)) => {
+                        tl2.borrow().on_dns_reply(data, len, port, ip32);
+                    }
+                    Err(e) => {
+                        error!("[DnsProxy]query dns failed:{}", e);
+                    }
+                }
+            }
+            Err(e) => {
+                error!("[DnsProxy]query dns failed:{}", e);
+            }
+        }
+    };
 
-            recv_fut
-        })
-        .map_err(|e| {
-            error!("[DnsProxy]query dns failed:{}", e);
-            ()
-        });
-
-    current_thread::spawn(fut);
+    tokio::task::spawn_local(fut);
 }
 
 struct RecvDgram<T> {
@@ -54,8 +60,7 @@ impl<T> RecvDgram<T> {
             socket: socket,
             buffer: buffer,
         };
-        let when = Instant::now() + Duration::from_millis(milliseconds);
-        let delay = Delay::new(when);
+        let delay = tokio::time::delay_for(Duration::from_millis(milliseconds));
         RecvDgram {
             state: Some(inner),
             delay: delay,
@@ -65,30 +70,34 @@ impl<T> RecvDgram<T> {
 
 impl<T> Future for RecvDgram<T>
 where
-    T: AsMut<[u8]>,
+    T: AsMut<[u8]>+Unpin,
 {
-    type Item = (UdpSocket, T, usize, SocketAddr);
-    type Error = std::io::Error;
+    type Output = std::result::Result<(UdpSocket, T, usize, SocketAddr), Error>;
 
-    fn poll(&mut self) -> Poll<Self::Item, std::io::Error> {
-        match self.delay.poll() {
-            Ok(Async::Ready(_)) => {
-                // info!("[RecvDgram]recv timeout");
-                return Err(std::io::Error::from(std::io::ErrorKind::TimedOut));
-            }
-            _ => {}
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output>{
+        let self_mut = self.get_mut();
+        if self_mut.delay.is_elapsed() {
+            return Poll::Ready(Err(std::io::Error::from(std::io::ErrorKind::TimedOut)));
         }
 
-        let (n, addr) = {
-            let ref mut inner = self
+        let result = {
+            let ref mut inner = self_mut
                 .state
                 .as_mut()
                 .expect("RecvDgram polled after completion");
 
-            try_ready!(inner.socket.poll_recv_from(inner.buffer.as_mut()))
+            ready!(inner.socket.poll_recv_from(cx, inner.buffer.as_mut()))
         };
 
-        let inner = self.state.take().unwrap();
-        Ok(Async::Ready((inner.socket, inner.buffer, n, addr)))
+        match result {
+            Ok((n, addr)) => {
+                let inner = self_mut.state.take().unwrap();
+                return Poll::Ready(Ok((inner.socket, inner.buffer, n, addr)));
+            }
+            Err(e) => {
+                return Poll::Ready(Err(e));
+            }
+        }
+
     }
 }

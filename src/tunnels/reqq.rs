@@ -71,7 +71,7 @@ impl Reqq {
 
         if req.wait_task.is_some() {
             let wait_task = req.wait_task.take().unwrap();
-            wait_task.notify();
+            wait_task.wake();
         }
 
         if req.rawfd.is_some() {

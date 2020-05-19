@@ -1,153 +1,93 @@
 use super::Tunnel;
 use crate::lws::WMessage;
 use futures::sink::Sink;
-use futures::stream::{Fuse, Stream};
-use futures::{try_ready, Async, AsyncSink, Future, Poll};
+// use futures::{try_ready, Async, AsyncSink, Future, Poll};
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::pin::Pin;
+use futures::task::{Context, Poll};
+use futures::ready;
 
 /// Future for the `Stream::forward` combinator, which sends a stream of values
 /// to a sink and then waits until the sink has fully flushed those values.
 #[must_use = "futures do nothing unless polled"]
-pub struct ForwardEx<T: Stream, U> {
-    sink: Option<U>,
-    stream: Option<Fuse<T>>,
-    buffered: Option<WMessage>,
+pub struct SinkEx<T> {
+    sink: T,
+    bytes_consume: u64,
     tun: Rc<RefCell<Tunnel>>,
     has_flowctl: bool,
 }
 
-pub fn new_forward_ex<T, U>(stream: T, sink: U, tun: Rc<RefCell<Tunnel>>) -> ForwardEx<T, U>
+impl<T> SinkEx<T>
 where
-    U: Sink<SinkItem = WMessage>,
-    T: Stream<Item = WMessage>,
-    T::Error: From<U::SinkError>,
+    T: Sink<WMessage>,
 {
-    let has_flowctl = tun.borrow().has_flowctl;
-    ForwardEx {
-        sink: Some(sink),
-        stream: Some(stream.fuse()),
-        buffered: None,
-        tun,
-        has_flowctl,
-    }
-}
-
-impl<T, U> ForwardEx<T, U>
-where
-    U: Sink<SinkItem = WMessage>,
-    T: Stream<Item = WMessage>,
-    T::Error: From<U::SinkError>,
-{
-    /// Get a shared reference to the inner sink.
-    /// If this combinator has already been polled to completion, None will be returned.
-    // pub fn sink_ref(&self) -> Option<&U> {
-    //     self.sink.as_ref()
-    // }
-
-    /// Get a mutable reference to the inner sink.
-    /// If this combinator has already been polled to completion, None will be returned.
-    pub fn sink_mut(&mut self) -> Option<&mut U> {
-        self.sink.as_mut()
-    }
-
-    /// Get a shared reference to the inner stream.
-    /// If this combinator has already been polled to completion, None will be returned.
-    // pub fn stream_ref(&self) -> Option<&T> {
-    //     self.stream.as_ref().map(|x| x.get_ref())
-    // }
-
-    /// Get a mutable reference to the inner stream.
-    /// If this combinator has already been polled to completion, None will be returned.
-    pub fn stream_mut(&mut self) -> Option<&mut T> {
-        self.stream.as_mut().map(|x| x.get_mut())
-    }
-
-    fn take_result(&mut self) -> (T, U) {
-        let sink = self
-            .sink
-            .take()
-            .expect("Attempted to poll ForwardEx after completion");
-        let fuse = self
-            .stream
-            .take()
-            .expect("Attempted to poll ForwardEx after completion");
-        (fuse.into_inner(), sink)
-    }
-
-    fn try_start_send(&mut self, item: WMessage) -> Poll<(), U::SinkError> {
-        debug_assert!(self.buffered.is_none());
-        if let AsyncSink::NotReady(item) = self
-            .sink_mut()
-            .expect("Attempted to poll ForwardEx after completion")
-            .start_send(item)?
-        {
-            self.buffered = Some(item);
-            return Ok(Async::NotReady);
+    pub fn new(sink: T, tun: Rc<RefCell<Tunnel>>) -> Self
+    {
+        let has_flowctl = tun.borrow().has_flowctl;
+        SinkEx {
+            sink,
+            bytes_consume:0,
+            tun,
+            has_flowctl,
         }
-        Ok(Async::Ready(()))
     }
 }
 
-impl<T, U> Future for ForwardEx<T, U>
+impl<T> Sink<WMessage> for SinkEx<T>
 where
-    U: Sink<SinkItem = WMessage>,
-    T: Stream<Item = WMessage>,
-    T::Error: From<U::SinkError>,
+    T: Sink<WMessage>+Unpin
 {
-    type Item = (T, U);
     type Error = T::Error;
 
-    fn poll(&mut self) -> Poll<(T, U), T::Error> {
-        let mut bytes_cosume = 0;
-        // If we've got an item buffered already, we need to write it to the
-        // sink before we can do anything else
-        if let Some(item) = self.buffered.take() {
-            bytes_cosume = item.content_length;
-            try_ready!(self.try_start_send(item))
-        }
+    fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        // Poll::Ready(Ok(()))
+        let self_mut = self.get_mut();
+        // check flowctl
 
-        loop {
-            // TODO: flowctl
-            if self.has_flowctl {
-                match self
-                    .tun
-                    .borrow()
-                    .poll_tunnel_quota_with(bytes_cosume as usize)
-                {
-                    Err(_) => {}
-                    Ok(t) => {
-                        if !t {
-                            return Ok(Async::NotReady);
-                        }
+        if self_mut.has_flowctl {
+            let bytes_consume = self_mut.bytes_consume;
+            self_mut.bytes_consume = 0;
+
+            match self_mut
+                .tun
+                .borrow()
+                .poll_tunnel_quota_with(bytes_consume as usize, cx.waker().clone())
+            {
+                Err(_) => {}
+                Ok(t) => {
+                    if !t {
+                        return Poll::Pending;
                     }
                 }
             }
-
-            match self
-                .stream_mut()
-                .expect("Attempted to poll ForwardEx after completion")
-                .poll()?
-            {
-                Async::Ready(Some(item)) => {
-                    bytes_cosume = item.content_length;
-                    try_ready!(self.try_start_send(item))
-                }
-                Async::Ready(None) => {
-                    try_ready!(self
-                        .sink_mut()
-                        .expect("Attempted to poll ForwardEx after completion")
-                        .close());
-                    return Ok(Async::Ready(self.take_result()));
-                }
-                Async::NotReady => {
-                    try_ready!(self
-                        .sink_mut()
-                        .expect("Attempted to poll ForwardEx after completion")
-                        .poll_complete());
-                    return Ok(Async::NotReady);
-                }
-            }
         }
+
+        let mut io = &mut self_mut.sink;
+        let pin_io = Pin::new(&mut io);
+        pin_io.poll_ready(cx)
+    }
+
+    fn start_send(self: Pin<&mut Self>, item: WMessage) -> Result<(), Self::Error> {
+        let self_mut = self.get_mut();
+        
+        self_mut.bytes_consume = item.content_length as u64;
+        let mut io = &mut self_mut.sink;
+        let pin_io = Pin::new(&mut io);
+        pin_io.start_send(item)
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        let self_mut = self.get_mut();
+
+        let mut io = &mut self_mut.sink;
+        let pin_io = Pin::new(&mut io);
+        // Try flushing the underlying IO
+        pin_io.poll_flush(cx)
+    }
+
+    fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        ready!(self.poll_flush(cx))?;
+        Poll::Ready(Ok(()))
     }
 }

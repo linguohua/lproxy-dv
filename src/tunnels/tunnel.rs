@@ -1,7 +1,7 @@
 use super::{Cmd, LongLiveUA, Reqq, THeader, THEADER_SIZE};
 use crate::lws::{RMessage, TMessage, WMessage};
 use byte::*;
-use futures::sync::mpsc::UnboundedSender;
+use tokio::sync::mpsc::UnboundedSender;
 use log::{error, info};
 use nix::sys::socket::{shutdown, IpAddr, Shutdown};
 use std::cell::RefCell;
@@ -11,6 +11,7 @@ use std::rc::Rc;
 use std::result::Result;
 use std::time::Instant;
 use stream_cancel::Trigger;
+use futures::task::Waker;
 
 pub type LongLiveTun = Rc<RefCell<Tunnel>>;
 
@@ -168,7 +169,7 @@ impl Tunnel {
                         // );
                         self.send_bytes_counter = self.send_bytes_counter + vec.len() as u64;
                         let wmsg = WMessage::new(vec, (3 + THEADER_SIZE) as u16);
-                        let result = tx.unbounded_send(wmsg);
+                        let result = tx.send(wmsg);
                         match result {
                             Err(e) => {
                                 info!(
@@ -300,7 +301,7 @@ impl Tunnel {
 
         let wmsg = WMessage::new(buf, 0);
         let tx = &self.tx;
-        let result = tx.unbounded_send(wmsg);
+        let result = tx.send(wmsg);
         match result {
             Err(e) => {
                 error!(
@@ -323,7 +324,7 @@ impl Tunnel {
 
         let wmsg = WMessage::new(vec, 0);
         let tx = &self.tx;
-        let result = tx.unbounded_send(wmsg);
+        let result = tx.send(wmsg);
         match result {
             Err(e) => {
                 error!(
@@ -467,7 +468,7 @@ impl Tunnel {
             let wmsg = WMessage::new(buf, 0);
 
             // send to peer, should always succeed
-            if let Err(e) = self.tx.unbounded_send(wmsg) {
+            if let Err(e) = self.tx.send(wmsg) {
                 error!(
                     "[Tunnel]{} send_request_closed_to_server tx send failed:{}",
                     self.tunnel_id, e
@@ -521,7 +522,7 @@ impl Tunnel {
         // );
 
         let wmsg = WMessage::new(vec, 0);
-        let result = self.tx.unbounded_send(wmsg);
+        let result = self.tx.send(wmsg);
         match result {
             Err(e) => {
                 error!(
@@ -562,11 +563,11 @@ impl Tunnel {
         req.quota += quota as u32;
         if req.wait_task.is_some() {
             let wait_task = req.wait_task.take().unwrap();
-            wait_task.notify();
+            wait_task.wake();
         }
     }
 
-    pub fn flowctl_request_quota_poll(&mut self, req_idx: u16, req_tag: u16) -> Result<bool, ()> {
+    pub fn flowctl_request_quota_poll(&mut self, req_idx: u16, req_tag: u16, wak: Waker) -> Result<bool, ()> {
         if !self.check_req_valid(req_idx, req_tag) {
             // just resume the task
             info!("[Tunnel]{} flowctl_quota_poll invalid req", self.tunnel_id);
@@ -577,7 +578,7 @@ impl Tunnel {
         let req_idx2 = req_idx as usize;
         let req = &mut requests.elements[req_idx2];
         if req.quota < 1 {
-            req.wait_task = Some(futures::task::current());
+            req.wait_task = Some(wak);
             return Ok(false);
         }
 
@@ -610,7 +611,7 @@ impl Tunnel {
 
         // websocket message
         let wmsg = WMessage::new(buf, 0);
-        let result = self.tx.unbounded_send(wmsg);
+        let result = self.tx.send(wmsg);
 
         match result {
             Err(e) => {
@@ -673,7 +674,7 @@ impl Tunnel {
         bs.write_with::<u64>(offset, timestamp, LE).unwrap();
 
         let msg = WMessage::new(bs1, 0);
-        let r = self.tx.unbounded_send(msg);
+        let r = self.tx.send(msg);
         match r {
             Err(e) => {
                 error!("[Tunnel]tunnel send_ping error:{}", e);
@@ -686,9 +687,9 @@ impl Tunnel {
         true
     }
 
-    pub fn poll_tunnel_quota_with(&self, bytes_cosume: usize) -> Result<bool, ()> {
+    pub fn poll_tunnel_quota_with(&self, bytes_cosume: usize, waker: Waker) -> Result<bool, ()> {
         self.account
             .borrow_mut()
-            .poll_tunnel_quota_with(bytes_cosume)
+            .poll_tunnel_quota_with(bytes_cosume, waker)
     }
 }

@@ -2,8 +2,8 @@ use super::{ServerCfg, SERVICE_MONITOR_INTERVAL};
 use etcd::kv::{self, KeyValueInfo, WatchError, WatchOptions};
 use etcd::Error;
 use etcd::{Client, Response};
-use futures::Future;
 use std::fmt;
+use futures::compat::Compat01As03;
 
 const ETCD_CFG_ROOT: &str = "/dv/global/";
 const ETCD_CFG_TUN_PATH: &str = "/dv/global/tun_path";
@@ -26,9 +26,9 @@ impl fmt::Display for EtcdConfig {
 }
 
 impl EtcdConfig {
-    pub fn load_from_etcd(
+    pub async fn load_from_etcd(
         server_cfg: &ServerCfg,
-    ) -> impl Future<Item = EtcdConfig, Error = Vec<Error>> {
+    ) -> std::result::Result<EtcdConfig, Vec<Error>> {
         println!(
             "load_from_etcd, addr:{}, user:{}, passw:{}",
             &server_cfg.etcd_addr, &server_cfg.etcd_user, &server_cfg.etcd_password
@@ -50,31 +50,24 @@ impl EtcdConfig {
 
         // Once the key has been set, ask for details about it.
         let get_request = kv::get(&client, ETCD_CFG_TUN_PATH, kv::GetOptions::default());
-        let get_request = get_request.and_then(move |response| {
-            let tun_path = response.data.node.value.unwrap();
+        let response = Compat01As03::new(get_request).await?;
+        let tun_path = response.data.node.value.unwrap();
+        let get_request2 = kv::get(&client, ETCD_CFG_HUB_GRPC_ADDR, kv::GetOptions::default());
+        let response3 = Compat01As03::new(get_request2).await?;
+        let grpc_addr = response3.data.node.value.unwrap();
+        //println!("etcd get grpc address ok:{}", grpc_addr);
 
-            //println!("etcd get tun path ok:{}", tun_path);
+        let ecfg = EtcdConfig {
+            tun_path,
+            hub_grpc_addr: grpc_addr,
+        };
 
-            let get_request2 = kv::get(&client, ETCD_CFG_HUB_GRPC_ADDR, kv::GetOptions::default());
-            get_request2.and_then(move |response3| {
-                let grpc_addr = response3.data.node.value.unwrap();
-                //println!("etcd get grpc address ok:{}", grpc_addr);
-
-                let ecfg = EtcdConfig {
-                    tun_path,
-                    hub_grpc_addr: grpc_addr,
-                };
-
-                Ok(ecfg)
-            })
-        });
-
-        get_request
+        Ok(ecfg)
     }
 
-    pub fn monitor_etcd_cfg(
+    pub async fn monitor_etcd_cfg(
         server_cfg: &ServerCfg,
-    ) -> impl Future<Item = Response<KeyValueInfo>, Error = WatchError> {
+    ) -> std::result::Result<Response<KeyValueInfo>, WatchError> {
         let auth = if server_cfg.etcd_user.len() > 0 {
             Some(etcd::BasicAuth {
                 username: server_cfg.etcd_user.to_string(),
@@ -92,13 +85,14 @@ impl EtcdConfig {
             timeout: None, // without timeout, the future maybe hang forever
         };
 
-        kv::watch(&client, ETCD_CFG_ROOT, wo).and_then(|response| Ok(response))
+        let rsp = Compat01As03::new(kv::watch(&client, ETCD_CFG_ROOT, wo)).await?;
+        Ok(rsp)
     }
 }
 
-pub fn etcd_write_instance_data(
+pub async fn etcd_write_instance_data(
     server_cfg: &ServerCfg,
-) -> impl Future<Item = (), Error = Vec<Error>> {
+) -> std::result::Result<(), Vec<Error>> {
     let auth = if server_cfg.etcd_user.len() > 0 {
         Some(etcd::BasicAuth {
             username: server_cfg.etcd_user.to_string(),
@@ -116,17 +110,16 @@ pub fn etcd_write_instance_data(
     let key_address2 = format!("{}/grpc_address", dir);
     let key_value2 = format!("{}:{}", server_cfg.my_grpc_addr, server_cfg.my_grpc_port);
 
-    kv::set(&client, &key_address, &key_value, None).and_then(move |_| {
-        kv::set(&client, &key_address2, &key_value2, None).and_then(move |_| {
-            kv::update_dir(&client, &dir, Some(SERVICE_MONITOR_INTERVAL * 2))
-                .and_then(move |_| Ok(()))
-        })
-    })
+    Compat01As03::new(kv::set(&client, &key_address, &key_value, None)).await?;
+    Compat01As03::new(kv::set(&client, &key_address2, &key_value2, None)).await?;
+    Compat01As03::new(kv::update_dir(&client, &dir, Some(SERVICE_MONITOR_INTERVAL * 2))).await?;
+
+    Ok(())
 }
 
-pub fn etcd_update_instance_ttl(
+pub async fn etcd_update_instance_ttl(
     server_cfg: &ServerCfg,
-) -> impl Future<Item = (), Error = Vec<Error>> {
+) -> std::result::Result<(), Vec<Error>> {
     let auth = if server_cfg.etcd_user.len() > 0 {
         Some(etcd::BasicAuth {
             username: server_cfg.etcd_user.to_string(),
@@ -140,5 +133,7 @@ pub fn etcd_update_instance_ttl(
 
     let uuid = &server_cfg.uuid;
     let dir = format!("{}/{}", ETCD_CFG_DV_INSTANCE_ROOT, uuid);
-    kv::update_dir(&client, &dir, Some(SERVICE_MONITOR_INTERVAL * 2)).and_then(|_| Ok(()))
+    Compat01As03::new(kv::update_dir(&client, &dir, Some(SERVICE_MONITOR_INTERVAL * 2))).await?;
+
+    Ok(())
 }

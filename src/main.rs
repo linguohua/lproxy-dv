@@ -6,14 +6,11 @@ mod tlsserver;
 mod token;
 mod tunnels;
 
-use futures::future::lazy;
-use futures::stream::Stream;
-use futures::Future;
-use log::{error, info};
+use log::{info};
 use service::Service;
-use signal_hook::iterator::Signals;
 use std::env;
-use tokio::runtime::current_thread::Runtime;
+use tokio::signal::unix::{signal, SignalKind};
+use tokio::runtime;
 
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
@@ -51,34 +48,34 @@ fn main() {
         Ok(t) => t,
     };
 
-    let mut rt = Runtime::new().unwrap();
+    let mut basic_rt = runtime::Builder::new()
+    .basic_scheduler()
+    .enable_all()
+    .build().unwrap();
+    // let handle = rt.handle();
+    let local = tokio::task::LocalSet::new();
 
-    let l = lazy(move || {
+    let l = async move {
         let s = Service::new(tuncfg);
         s.borrow_mut().start(s.clone());
+        let s2 = s.clone();
 
-        let wait_signal = Signals::new(&[signal_hook::SIGUSR1, signal_hook::SIGUSR2])
-            .unwrap()
-            .into_async()
-            .unwrap()
-            .into_future()
-            .map(move |sig| {
-                info!("got sigal:{:?}", sig.0);
-                // Service::stop
-                if sig.0 == Some(signal_hook::SIGUSR1) {
-                    s.borrow_mut().stop();
-                } else if sig.0 == Some(signal_hook::SIGUSR2) {
-                    // just for test
-                    s.borrow_mut().restart();
-                }
+        let lx = async move {
+            let mut ss = signal(SignalKind::user_defined2()).unwrap();
+            while let Some(x) = ss.recv().await {
+                println!("got signal {:?}", x);
+                s2.borrow_mut().restart();
+            }
+        };
+        tokio::task::spawn_local(lx);
 
-                ()
-            })
-            .map_err(|e| error!("{}", e.0));
+        let mut ss = signal(SignalKind::user_defined1()).unwrap();
+        // TODO: user_defined2, restart
+        let sig = ss.recv().await;
+        println!("got signal {:?}", sig);
+            // Service::stop
+        s.borrow_mut().stop();
+    };
 
-        wait_signal
-    });
-
-    rt.spawn(l);
-    rt.run().unwrap();
+    local.block_on(&mut basic_rt, l);
 }

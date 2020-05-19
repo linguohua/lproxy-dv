@@ -1,11 +1,9 @@
-use super::new_forward_ex;
 use super::Tunnel;
 use super::{LongLiveTM, LongLiveUA, UserAccount};
 use crate::tlsserver::WSStreamInfo;
-use futures::{Future, Stream};
+use futures::prelude::*;
 use log::{debug, info};
 use tokio;
-use tokio::runtime::current_thread;
 
 pub fn serve_websocket(
     wsinfo: WSStreamInfo,
@@ -39,7 +37,7 @@ pub fn serve_websocket(
     // Create a channel for our stream, which other sockets will use to
     // send us messages. Then register our address with the stream to send
     // data to us.
-    let (tx, rx) = futures::sync::mpsc::unbounded();
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
     let rawfd = wsinfo.rawfd;
 
     let t = Tunnel::new(
@@ -60,7 +58,6 @@ pub fn serve_websocket(
     }
 
     let t2 = t.clone();
-    let t4 = t.clone();
 
     // `sink` is the stream of messages going out.
     // `stream` is the stream of incoming messages.
@@ -68,30 +65,30 @@ pub fn serve_websocket(
 
     let receive_fut = stream.for_each(move |message| {
         debug!("[tunserv]tunnel read a message");
-        // post to manager
-        let mut clone = t.borrow_mut();
-        clone.on_tunnel_msg(message, t.clone());
+        match message {
+            Ok(m)=> {
+                // post to manager
+                let mut clone = t.borrow_mut();
+                clone.on_tunnel_msg(m, t.clone());
+            }
+            _ => {}
+        }
 
-        Ok(())
+        future::ready(())
     });
 
-    let rx = rx.map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "[tunbuilder] rx-shit"));
+    let rx = rx.map(|x|{Ok(x)});
+    let send_fut = rx.forward(super::SinkEx::new(sink, t2.clone())); // TODO:
 
-    let send_fut = new_forward_ex(rx, sink, t4);
+    // Wait for one future to complete.
+    let select_fut = async move {
+        future::select(receive_fut, send_fut).await;
+        info!("[tunserv] both websocket futures completed");
+        let mut rf = s2.borrow_mut();
+        rf.on_tunnel_closed(t2.clone());
+    };
 
-    // Wait for either of futures to complete.
-    let receive_fut = receive_fut
-        .map(|_| ())
-        .map_err(|_| ())
-        .select(send_fut.map(|_| ()).map_err(|_| ()))
-        .then(move |_| {
-            info!("[tunserv] both websocket futures completed");
-            let mut rf = s2.borrow_mut();
-            rf.on_tunnel_closed(t2.clone());
-            Ok(())
-        });
-
-    current_thread::spawn(receive_fut);
+    tokio::task::spawn_local(select_fut);
 }
 
 fn find_usize_from_query_string(path: &str, key: &str) -> usize {

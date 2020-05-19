@@ -29,7 +29,7 @@ impl RpcServer {
         let e = Arc::new(grpcio::Environment::new(1));
         let sb = grpcio::ServerBuilder::new(e);
         let credentials = pkcs12_to_server_credentials(&self.pkcs12, &self.pkcs12_passwd)?;
-        let sb = sb.bind_secure(&self.addr, self.port, credentials);
+        let sb = sb.bind_with_cred(&self.addr, self.port, credentials);
         let dvi = DvExportImpl { ref_service_tx: s };
         let service = myrpc::create_dv_export(dvi);
         let sb = sb.register_service(service);
@@ -64,7 +64,7 @@ impl myrpc::DvExport for DvExportImpl {
         let rsp = myrpc::Empty::default();
         let ins = Instruction::Kickout(req.uuid);
 
-        match self.ref_service_tx.unbounded_send(ins) {
+        match self.ref_service_tx.send(ins) {
             Err(e) => {
                 error!("[gRpcServer] kickout_uuid unbounded_send failed:{}", e);
             }
@@ -84,7 +84,7 @@ impl myrpc::DvExport for DvExportImpl {
         info!("[gRpcServer] uuid_cfg_changed called");
         let ins = Instruction::CfgChangeNotify(req);
 
-        match self.ref_service_tx.unbounded_send(ins) {
+        match self.ref_service_tx.send(ins) {
             Err(e) => {
                 error!("[gRpcServer] uuid_cfg_changed unbounded_send failed:{}", e);
             }

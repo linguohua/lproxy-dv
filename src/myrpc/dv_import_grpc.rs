@@ -52,7 +52,7 @@ impl BandwidthReportClient {
     pub fn report_async(&self, req: &super::dv_import::BandwidthStatistics) -> ::grpcio::Result<::grpcio::ClientUnaryReceiver<super::dv_import::ReportResult>> {
         self.report_async_opt(req, ::grpcio::CallOption::default())
     }
-    pub fn spawn<F>(&self, f: F) where F: ::futures::Future<Item = (), Error = ()> + Send + 'static {
+    pub fn spawn<F>(&self, f: F) where F: ::futures_01::Future<Item = (), Error = ()> + Send + 'static {
         self.client.spawn(f)
     }
 }
@@ -104,7 +104,7 @@ impl DeviceCfgPullClient {
     pub fn pull_cfg_async(&self, req: &super::dv_import::CfgPullRequest) -> ::grpcio::Result<::grpcio::ClientUnaryReceiver<super::dv_import::CfgPullResult>> {
         self.pull_cfg_async_opt(req, ::grpcio::CallOption::default())
     }
-    pub fn spawn<F>(&self, f: F) where F: ::futures::Future<Item = (), Error = ()> + Send + 'static {
+    pub fn spawn<F>(&self, f: F) where F: ::futures_01::Future<Item = (), Error = ()> + Send + 'static {
         self.client.spawn(f)
     }
 }

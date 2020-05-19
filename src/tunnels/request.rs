@@ -1,9 +1,9 @@
 use crate::lws::WMessage;
-use futures::sync::mpsc::UnboundedSender;
-use futures::task::Task;
+use tokio::sync::mpsc::UnboundedSender;
 use std::fmt;
 use std::os::unix::io::RawFd;
 use stream_cancel::Trigger;
+use futures::task::Waker;
 
 pub struct Request {
     pub index: u16,
@@ -16,7 +16,7 @@ pub struct Request {
     // pub port_le: u16,
     pub quota: u32,
 
-    pub wait_task: Option<Task>,
+    pub wait_task: Option<Waker>,
 
     pub rawfd: Option<RawFd>,
 }

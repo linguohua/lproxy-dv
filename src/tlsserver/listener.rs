@@ -13,12 +13,11 @@ use std::os::unix::io::AsRawFd;
 use std::os::unix::io::RawFd;
 use std::rc::Rc;
 use std::result::Result;
-use stream_cancel::{StreamExt, Trigger, Tripwire};
-use tokio::prelude::*;
-use tokio::runtime::current_thread::{self};
-use tokio_tcp::TcpListener;
-use tokio_tcp::TcpStream;
+use stream_cancel::{Trigger, Tripwire};
+use futures::prelude::*;
+use tokio::net::{TcpListener,TcpStream};
 use tokio_tls::TlsStream;
+use std::io::Read;
 
 type WSStream = LwsFramed<TlsStream<TcpStream>>;
 type LongLive = Rc<RefCell<Listener>>;
@@ -70,8 +69,10 @@ impl Listener {
 
     fn start_server(&mut self, ll: LongLive) -> Result<(), Error> {
         // Bind the server's socket
-        let addr = self.listen_addr.parse()?;
-        let tcp = TcpListener::bind(&addr)?;
+        let addr: std::net::SocketAddr = self.listen_addr.parse()?;
+        let socket_tcp = std::net::TcpListener::bind(addr)?;
+        let mut tcp = TcpListener::from_std(socket_tcp)?;
+
         info!(
             "[Server]listener at:{}, pkcs12:{}",
             self.listen_addr, self.pkcs12
@@ -86,59 +87,62 @@ impl Listener {
         let tls_acceptor =
             tokio_tls::TlsAcceptor::from(native_tls::TlsAcceptor::builder(identity).build()?);
 
+        let tls_acceptor = Rc::new(RefCell::new(tls_acceptor));
         let (trigger, tripwire) = Tripwire::new();
         self.listener_trigger = Some(trigger);
 
-        let server = tcp
+        let server = async move {
+            tcp
             .incoming()
             .take_until(tripwire)
-            .for_each(move |tcp| {
-                let rawfd = tcp.as_raw_fd();
-                let ll = ll.clone();
-                // tcp.set_nodelay(true).unwrap();
-
-                // Accept the TLS connection.
-                let tls_accept = tls_acceptor
-                    .accept(tcp)
-                    .map_err(|tslerr| {
-                        error!("TLS Accept error:{}", tslerr);
-                        std::io::Error::from(std::io::ErrorKind::NotConnected)
-                    })
-                    .and_then(move |tls| {
-                        // handshake
-                        let handshake = lws::do_server_hanshake(tls);
-                        let handshake = handshake.and_then(move |(lsocket, path)| {
-                            if path.is_some() {
-                                let p = path.unwrap();
-                                info!("[Server]path:{}", p);
-                                let lstream = lws::LwsFramed::new(lsocket, None);
-                                let s = ll.clone();
-                                let mut s = s.borrow_mut();
-                                let dns = find_str_from_query_string(&p, "dns=");
-                                if p.contains(&s.tun_path) {
-                                    s.on_accept_proxy_websocket(rawfd, lstream, dns == "1", p);
+            .for_each(move |tcps| {
+                match tcps {
+                    Ok(tcpx) => {
+                        let rawfd = tcpx.as_raw_fd();
+                        let ll2 = ll.clone();
+                        let tls_acceptor = tls_acceptor.clone();
+    
+                        // Accept the TLS connection.
+                        let tls_accept = async move {
+                            match tls_acceptor.borrow().accept(tcpx).await {
+                                Ok(tls) => {
+                                    match lws::do_server_hanshake(tls).await {
+                                        Ok((lsocket, path)) => {
+                                            if path.is_some() {
+                                                let p = path.unwrap();
+                                                info!("[Server]path:{}", p);
+                                                let lstream = lws::LwsFramed::new(lsocket, None);
+                                                let s = ll2.clone();
+                                                let mut s = s.borrow_mut();
+                                                let dns = find_str_from_query_string(&p, "dns=");
+                                                if p.contains(&s.tun_path) {
+                                                    s.on_accept_proxy_websocket(rawfd, lstream, dns == "1", p);
+                                                }
+                                            }
+                                        }
+                                        Err(e) => {
+                                            error!("[Server]TLS do_server_hanshake error:{}", e);
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    error!("[Server]TLS Accept error:{}", e);
                                 }
                             }
+                        };
+                        // task
+                        tokio::task::spawn_local(tls_accept);
+                    }
+                    Err(e) => {
+                        error!("[Server]server accept error {:?}", e);
+                    }
+                }
+                future::ready(())
+            }).await;
 
-                            Ok(())
-                        });
-
-                        handshake
-                    })
-                    .map_err(|err| {
-                        error!("[Server]TLS accept error: {:?}", err);
-                        ()
-                    });
-
-                current_thread::spawn(tls_accept);
-
-                Ok(())
-            })
-            .map_err(|err| {
-                error!("[Server]server error {:?}", err);
-            });
-
-        current_thread::spawn(server);
+            info!("[Server]accept future completed");
+        };
+        tokio::task::spawn_local(server);
 
         Ok(())
     }
@@ -166,7 +170,7 @@ impl Listener {
 
                 let tx = &self.tmstub[index];
                 let cmd = SubServiceCtlCmd::TcpTunnel(wsinfo);
-                if let Err(e) = tx.ctl_tx.unbounded_send(cmd) {
+                if let Err(e) = tx.ctl_tx.send(cmd) {
                     error!("[Server]send req to tm failed:{}", e);
                 }
             }

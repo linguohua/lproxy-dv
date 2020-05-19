@@ -11,11 +11,9 @@ use std::net::SocketAddr;
 use std::rc::Rc;
 use std::result::Result;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
-use stream_cancel::{StreamExt, Trigger, Tripwire};
-use tokio::prelude::*;
-use tokio::runtime::current_thread;
-use tokio::timer::Interval;
+use std::time::{Duration};
+use stream_cancel::{Trigger, Tripwire};
+use futures::prelude::*;
 
 type LongLive = Rc<RefCell<TunMgr>>;
 pub type LongLiveTM = LongLive;
@@ -203,7 +201,7 @@ impl TunMgr {
         if map.len() > 0 {
             // send to service
             let ins = Instruction::ReportBandwidth(map);
-            match self.ins_tx.unbounded_send(ins) {
+            match self.ins_tx.send(ins) {
                 Err(e) => {
                     error!(
                         "[TunMgr]collect_flow_and_report, unbounded_send failed:{}",
@@ -230,7 +228,7 @@ impl TunMgr {
 
         let mut ping_interval = 0;
         // tokio timer, every few seconds
-        let task = Interval::new(Instant::now(), Duration::from_millis(QUOTA_RESET_INTERVAL))
+        let task = tokio::time::interval(Duration::from_millis(QUOTA_RESET_INTERVAL))
             .skip(1)
             .take_until(tripwire)
             .for_each(move |instant| {
@@ -244,20 +242,15 @@ impl TunMgr {
 
                 rf.quota_reset();
 
-                Ok(())
-            })
-            .map_err(|e| {
-                error!(
-                    "[TunMgr]start_keepalive_timer interval errored; err={:?}",
-                    e
-                )
-            })
-            .then(|_| {
-                info!("[TunMgr] keepalive timer future completed");
-                Ok(())
+                future::ready(())
             });
 
-        current_thread::spawn(task);
+        let task = async move {
+            task.await;
+            info!("[TunMgr] keepalive timer future completed");
+        };
+
+        tokio::task::spawn_local(task);
     }
 
     pub fn allocate_account(&mut self, uuid: &str, ll: LongLiveTM) -> super::LongLiveUA {

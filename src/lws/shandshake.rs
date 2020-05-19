@@ -1,9 +1,11 @@
 use bytes::{BufMut, BytesMut};
 use futures::prelude::*;
-use futures::try_ready;
+use futures::ready;
 use sha1::{Digest, Sha1};
 use std::io::Error;
-use tokio::prelude::*;
+use tokio::io::{AsyncRead, AsyncWrite};
+use std::pin::Pin;
+use futures::task::{Context, Poll};
 
 pub enum SHState {
     ReadingHeader,
@@ -101,61 +103,63 @@ impl<T> SHandshake<T> {
 
 impl<T> Future for SHandshake<T>
 where
-    T: AsyncWrite + AsyncRead,
+    T: AsyncWrite + AsyncRead + Unpin,
 {
-    type Item = (T, Option<String>);
-    type Error = Error;
+    type Output = std::result::Result<(T, Option<String>), Error>;
 
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output>{
+        let self_mut = self.get_mut();
         loop {
-            match self.state {
+            match self_mut.state {
                 SHState::ReadingHeader => {
                     // read in
-                    let io = self.io.as_mut().unwrap();
-                    let bm = &mut self.read_buf;
+                    let bm = &mut self_mut.read_buf;
                     if !bm.has_remaining_mut() {
                         // error, head too large
-                        return Err(std::io::Error::new(
+                        return Poll::Ready(Err(std::io::Error::new(
                             std::io::ErrorKind::Other,
                             "header too large",
-                        ));
+                        )));
                     }
 
-                    let n = try_ready!(io.read_buf(bm));
+                    let mut io = self_mut.io.as_mut().unwrap();
+                    let pin_io = Pin::new(&mut io);
+                    let n = ready!(pin_io.poll_read_buf(cx, bm))?;
                     if n == 0 {
-                        return Err(std::io::Error::new(
+                        return Poll::Ready(Err(std::io::Error::new(
                             std::io::ErrorKind::Other,
                             "can't read completed header",
-                        ));
+                        )));
                     }
 
-                    if self.parse_header() {
+                    if self_mut.parse_header() {
                         // completed
-                        self.state = SHState::WritingResponse;
+                        self_mut.state = SHState::WritingResponse;
                     } else {
                         // continue loop
                     }
                 }
                 SHState::WritingResponse => {
                     // write out
-                    let io = self.io.as_mut().unwrap();
-                    let wmsg = self.wmsg.as_mut().unwrap();
-                    try_ready!(io.write_buf(wmsg));
+                    let mut io = self_mut.io.as_mut().unwrap();
+                    let pin_io = Pin::new(&mut io);
+                    let mut wmsg = self_mut.wmsg.as_mut().unwrap();
+                    ready!(pin_io.poll_write_buf(cx, &mut wmsg))?;
 
                     if wmsg.is_completed() {
-                        self.state = SHState::Done;
+                        self_mut.state = SHState::Done;
                     }
                 }
                 SHState::Done => {
-                    let io = self.io.take().unwrap();
+                    let io = self_mut.io.take().unwrap();
                     let vv;
-                    if self.path.is_some() {
-                        vv = Some(self.path.take().unwrap());
+                    if self_mut.path.is_some() {
+                        vv = Some(self_mut.path.take().unwrap());
                     } else {
                         vv = None;
                     }
 
-                    return Ok(Async::Ready((io, vv)));
+                    return Poll::Ready(Ok((io, vv)));
                 }
             }
         }

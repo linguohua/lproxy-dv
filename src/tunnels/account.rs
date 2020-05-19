@@ -1,12 +1,11 @@
 use crate::config::QUOTA_RESET_INTERVAL;
 use crate::myrpc;
 use crate::tlsserver::WSStreamInfo;
-use futures::task::Task;
+use futures::task::Waker;
 use log::error;
 use std::cell::RefCell;
 use std::rc::Rc;
-use tokio::prelude::*;
-use tokio::runtime::current_thread;
+use futures::compat::Compat01As03;
 
 pub type LongLiveUA = Rc<RefCell<UserAccount>>;
 
@@ -16,7 +15,7 @@ pub struct UserAccount {
     is_in_pulling: bool,
     pub quota_remain: usize,
     pub quota_per_second: usize,
-    wait_tasks: Vec<Task>,
+    wait_tasks: Vec<Waker>,
     wait_tunnels: Vec<WSStreamInfo>,
     tm: super::LongLiveTM,
 
@@ -51,7 +50,7 @@ impl UserAccount {
             loop {
                 match self.wait_tasks.pop() {
                     Some(t) => {
-                        t.notify();
+                        t.wake();
                     }
                     None => {
                         return;
@@ -71,11 +70,11 @@ impl UserAccount {
         self.quota_remain
     }
 
-    pub fn poll_tunnel_quota_with(&mut self, bytes_cosume: usize) -> Result<bool, ()> {
+    pub fn poll_tunnel_quota_with(&mut self, bytes_cosume: usize, waker : Waker) -> Result<bool, ()> {
         let remain = self.consume(bytes_cosume);
 
         if remain == 0 {
-            self.wait_tasks.push(futures::task::current());
+            self.wait_tasks.push(waker);
             return Ok(false);
         }
 
@@ -131,39 +130,39 @@ impl UserAccount {
             Ok(async_receiver) => {
                 let ll1 = ll.clone();
                 let ll2 = ll.clone();
-                let fut = async_receiver
-                    .and_then(move |rsp| {
-                        if rsp.code != 0 {
-                            error!(
-                                "[UserAccount]start_pull_cfg, error, server code:{}",
-                                rsp.code
-                            );
-                        }
-
-                        let mut rf = ll1.borrow_mut();
-                        rf.is_in_pulling = false;
-                        rf.on_cfg_pull_completed(rsp, ll1.clone());
-                        Ok(())
-                    })
-                    .map_err(move |e| {
-                        error!("[UserAccount]start_pull_cfg, grpc error:{}", e);
-                        let mut rf = ll2.borrow_mut();
-                        match e {
-                            grpcio::Error::RpcFailure(s) => {
-                                if s.status == grpcio::RpcStatusCode::Unavailable {
-                                    // notify tm, it's grpc client need to rebuild
-                                    rf.tm.borrow_mut().invalid_grpc_client();
-                                }
+                let fut = async move {
+                    match Compat01As03::new(async_receiver).await {
+                        Ok(rsp) => {
+                            if rsp.code != 0 {
+                                error!(
+                                    "[UserAccount]start_pull_cfg, error, server code:{}",
+                                    rsp.code
+                                );
                             }
-                            _ => {}
+    
+                            let mut rf = ll1.borrow_mut();
+                            rf.is_in_pulling = false;
+                            rf.on_cfg_pull_completed(rsp, ll1.clone());
+                        },
+                        Err(e) => {
+                            error!("[UserAccount]start_pull_cfg, grpc error:{}", e);
+                            let mut rf = ll2.borrow_mut();
+                            match e {
+                                grpcio::Error::RpcFailure(s) => {
+                                    if s.status == grpcio::RpcStatusCode::UNAVAILABLE {
+                                        // notify tm, it's grpc client need to rebuild
+                                        rf.tm.borrow_mut().invalid_grpc_client();
+                                    }
+                                }
+                                _ => {}
+                            }
+    
+                            rf.is_in_pulling = false;
+                            rf.on_cfg_pull_failed();
                         }
-
-                        rf.is_in_pulling = false;
-                        rf.on_cfg_pull_failed();
-                        ()
-                    });
-
-                current_thread::spawn(fut);
+                    }
+                };
+                tokio::task::spawn_local(fut);
             }
             Err(e) => {
                 error!("[UserAccount]start_pull_cfg, grpc failed:{}", e);

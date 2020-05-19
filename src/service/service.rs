@@ -1,13 +1,11 @@
 use crate::config::{self, SERVICE_MONITOR_INTERVAL};
 use crate::myrpc;
-use futures::sync::mpsc::UnboundedSender;
+use tokio::sync::mpsc::UnboundedSender;
 use log::{debug, error, info};
 use std::fmt;
-use std::time::{Duration, Instant};
-use stream_cancel::{StreamExt, Trigger, Tripwire};
-use tokio::prelude::*;
-use tokio::runtime::current_thread;
-use tokio::timer::{Delay, Interval};
+use std::time::{Duration};
+use futures::prelude::*;
+use stream_cancel::{Trigger, Tripwire};
 const STATE_STOPPED: u8 = 0;
 const STATE_STARTING: u8 = 1;
 const STATE_RUNNING: u8 = 2;
@@ -18,6 +16,7 @@ use grpcio::{ChannelBuilder, ChannelCredentialsBuilder, Environment};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
+use futures::compat::Compat01As03;
 
 pub type LongLiveS = Rc<RefCell<Service>>;
 
@@ -105,24 +104,23 @@ impl Service {
         if self.state == STATE_STOPPED {
             self.state = STATE_STARTING;
 
-            let (tx, rx) = futures::sync::mpsc::unbounded();
+            let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
             let (trigger, tripwire) = Tripwire::new();
             self.save_instruction_trigger(trigger);
 
             self.rpc_server.start(tx.clone()).unwrap();
 
             let clone = s.clone();
-            let fut = rx
+            let fut = async move {
+                rx
                 .take_until(tripwire)
                 .for_each(move |ins| {
                     Service::process_instruction(clone.clone(), ins);
-                    Ok(())
-                })
-                .then(|_| {
-                    info!("[Service] instruction rx future completed");
+                    future::ready(())
+                }).await;
 
-                    Ok(())
-                });
+                info!("[Service] instruction rx future completed");
+            };
 
             self.save_tx(Some(tx));
             let server_cfg = self.tuncfg.as_ref().unwrap();
@@ -138,7 +136,7 @@ impl Service {
                 self.fire_instruction(Instruction::StartSubServices);
             }
 
-            current_thread::spawn(fut);
+            tokio::task::spawn_local(fut);
         } else {
             panic!("[Service] start failed, state not stopped");
         }
@@ -148,70 +146,71 @@ impl Service {
         let s2 = s.clone();
         let s3 = s.clone();
         let rf = s.borrow();
-        let server_cfg = rf.tuncfg.as_ref().unwrap();
-        let fut = config::EtcdConfig::load_from_etcd(&server_cfg);
-        let fut = fut
-            .and_then(move |etcdcfg| {
-                info!("[Service] do_load_cfg_from_etcd ok, cfg:{}", etcdcfg);
-                s2.borrow_mut().save_etcd_cfg(etcdcfg);
-                s2.borrow_mut()
-                    .fire_instruction(Instruction::StartSubServices);
-                Ok(())
-            })
-            .map_err(|errors| {
-                for n in errors.iter() {
-                    info!("[Service] do_load_cfg_from_etcd failed:{}", n);
+        let server_cfg = rf.tuncfg.as_ref().unwrap().clone();
+        
+        let fut = async move {
+            let fut = config::EtcdConfig::load_from_etcd(server_cfg.as_ref());
+            match fut.await {
+                Ok(etcdcfg) => {
+                    info!("[Service] do_load_cfg_from_etcd ok, cfg:{}", etcdcfg);
+                    s2.borrow_mut().save_etcd_cfg(etcdcfg);
+                    s2.borrow_mut()
+                        .fire_instruction(Instruction::StartSubServices);
                 }
-
-                let seconds = 30;
-                info!(
-                    "[Service] do_load_cfg_from_etcd failed, retry {} seconds later",
-                    seconds
-                );
-                Service::delay_post_instruction(s3, seconds, Instruction::LoadEtcdConfig);
-            });
-
-        current_thread::spawn(fut);
+                Err(errors) => {
+                    for n in errors.iter() {
+                        info!("[Service] do_load_cfg_from_etcd failed:{}", n);
+                    }
+    
+                    let seconds = 30;
+                    info!(
+                        "[Service] do_load_cfg_from_etcd failed, retry {} seconds later",
+                        seconds
+                    );
+                    Service::delay_post_instruction(s3, seconds, Instruction::LoadEtcdConfig);
+                }
+            }
+        };
+        tokio::task::spawn_local(fut);
     }
 
     fn do_update_cfg_from_etcd(s: LongLiveS) {
         let s2 = s.clone();
         let s3 = s.clone();
         let rf = s.borrow();
-        let server_cfg = rf.tuncfg.as_ref().unwrap();
-        let fut = config::EtcdConfig::load_from_etcd(&server_cfg);
-        let fut = fut
-            .and_then(move |etcdcfg| {
-                info!("[Service] do_update_cfg_from_etcd ok, cfg:{}", etcdcfg);
+        let server_cfg = rf.tuncfg.as_ref().unwrap().clone();
+        
+        let fut = async move {
+            let fut = config::EtcdConfig::load_from_etcd(server_cfg.as_ref());
+            match fut.await {
+                Ok(etcdcfg) => {
+                    info!("[Service] do_update_cfg_from_etcd ok, cfg:{}", etcdcfg);
 
-                let mut rf = s2.borrow_mut();
-                rf.save_etcd_cfg(etcdcfg);
-
-                rf.notify_listener_update_etcdcfg();
-                // re-monitor
-                rf.fire_instruction(Instruction::MonitorEtcdConfig);
-
-                Ok(())
-            })
-            .map_err(move |errors| {
-                for n in errors.iter() {
-                    info!("[Service] do_update_cfg_from_etcd failed:{}", n);
+                    let mut rf = s2.borrow_mut();
+                    rf.save_etcd_cfg(etcdcfg);
+    
+                    rf.notify_listener_update_etcdcfg();
+                    // re-monitor
+                    rf.fire_instruction(Instruction::MonitorEtcdConfig);
                 }
-
-                s3.borrow_mut()
-                    .fire_instruction(Instruction::MonitorEtcdConfig);
-
-                ()
-            });
-
-        current_thread::spawn(fut);
+                Err(errors) => {
+                    for n in errors.iter() {
+                        info!("[Service] do_update_cfg_from_etcd failed:{}", n);
+                    }
+    
+                    s3.borrow_mut()
+                        .fire_instruction(Instruction::MonitorEtcdConfig);
+                }
+            }
+        };
+        tokio::task::spawn_local(fut);
     }
 
     fn notify_listener_update_etcdcfg(&self) {
         for ss in self.subservices.iter() {
             if ss.ctl_tx.is_some() {
                 let cmd = SubServiceCtlCmd::UpdateEtcdCfg(self.etcdcfg.as_ref().unwrap().clone());
-                match ss.ctl_tx.as_ref().unwrap().unbounded_send(cmd) {
+                match ss.ctl_tx.as_ref().unwrap().send(cmd) {
                     Err(e) => {
                         error!("[Service] send update etcdcfg to listener failed:{}", e);
                     }
@@ -228,7 +227,7 @@ impl Service {
                 SubServiceType::TunMgr => {
                     if ss.ctl_tx.is_some() {
                         let cmd = SubServiceCtlCmd::Kickout(uuid.to_string());
-                        match ss.ctl_tx.as_ref().unwrap().unbounded_send(cmd) {
+                        match ss.ctl_tx.as_ref().unwrap().send(cmd) {
                             Err(e) => {
                                 error!("[Service] send update etcdcfg to listener failed:{}", e);
                             }
@@ -248,7 +247,7 @@ impl Service {
                 SubServiceType::TunMgr => {
                     if ss.ctl_tx.is_some() {
                         let cmd = SubServiceCtlCmd::CfgChangeNotify(notify.clone());
-                        match ss.ctl_tx.as_ref().unwrap().unbounded_send(cmd) {
+                        match ss.ctl_tx.as_ref().unwrap().send(cmd) {
                             Err(e) => {
                                 error!("[Service] send update etcdcfg to listener failed:{}", e);
                             }
@@ -290,62 +289,67 @@ impl Service {
         let s2 = s.clone();
         let s3 = s.clone();
         let rf = s.borrow();
-        let server_cfg = rf.tuncfg.as_ref().unwrap();
-        let fut = config::EtcdConfig::monitor_etcd_cfg(&server_cfg);
-        let fut = fut
-            .and_then(move |_| {
-                info!("[Service] do_etcd_monitor ok, reload etcd config");
-                s2.borrow_mut()
-                    .fire_instruction(Instruction::UpdateEtcdConfig);
-                Ok(())
-            })
-            .map_err(|e| {
-                info!("[Service] do_etcd_monitor failed:{}, re-monitor later", e);
+        let server_cfg = rf.tuncfg.as_ref().unwrap().clone();
+        
+        let fut = async move {
+            let fut = config::EtcdConfig::monitor_etcd_cfg(server_cfg.as_ref());
+            match fut.await {
+                Ok(_) => {
+                    info!("[Service] do_etcd_monitor ok, reload etcd config");
+                    s2.borrow_mut()
+                        .fire_instruction(Instruction::UpdateEtcdConfig);
+                }
+                Err(e) => {
+                    info!("[Service] do_etcd_monitor failed:{}, re-monitor later", e);
 
-                // re-monitor again
-                Service::delay_post_instruction(s3, 10, Instruction::MonitorEtcdConfig);
-                ()
-            });
-
-        current_thread::spawn(fut);
+                    // re-monitor again
+                    Service::delay_post_instruction(s3, 10, Instruction::MonitorEtcdConfig);
+                }
+            }
+        };
+        tokio::task::spawn_local(fut);
     }
 
     fn do_write_etcd_instance_data(&self) {
-        let server_cfg = self.tuncfg.as_ref().unwrap();
-        let fut = config::etcd_write_instance_data(server_cfg);
-        let fut = fut
-            .and_then(move |_| {
-                info!("[Service] do_write_etcd_instance_data ok");
-                Ok(())
-            })
-            .map_err(|errors| {
-                for n in errors.iter() {
-                    info!("[Service] do_write_etcd_instance_data failed:{}", n);
+        let server_cfg = self.tuncfg.as_ref().unwrap().clone();
+
+        let fut = async move {
+            let fut = config::etcd_write_instance_data(server_cfg.as_ref());
+            match fut.await {
+                Ok(_) => {
+                    info!("[Service] do_write_etcd_instance_data ok");
                 }
-
-                ()
-            });
-
-        current_thread::spawn(fut);
+                Err(errors) => {
+                    for n in errors.iter() {
+                        info!("[Service] do_write_etcd_instance_data failed:{}", n);
+                    }
+                }
+            }
+        };
+        tokio::task::spawn_local(fut);
     }
 
     fn do_update_etcd_instance_ttl(s: LongLiveS) {
         let rf = s.borrow();
-        let server_cfg = rf.tuncfg.as_ref().unwrap();
+        let server_cfg = rf.tuncfg.as_ref().unwrap().clone();
         if server_cfg.etcd_addr.len() < 1 {
             return;
         }
 
-        let fut = config::etcd_update_instance_ttl(server_cfg);
-        let fut = fut.and_then(move |_| Ok(())).map_err(|errors| {
-            for n in errors.iter() {
-                info!("[Service] do_update_etcd_instance_ttl failed:{}", n);
+        let fut = async move {
+            let fut = config::etcd_update_instance_ttl(server_cfg.as_ref());
+            match fut.await {
+                Ok(_) => {
+
+                }
+                Err(errors) => {
+                    for n in errors.iter() {
+                        info!("[Service] do_update_etcd_instance_ttl failed:{}", n);
+                    }
+                }
             }
-
-            ()
-        });
-
-        current_thread::spawn(fut);
+        };
+        tokio::task::spawn_local(fut);
     }
 
     fn do_service_monitor(s: LongLiveS) {
@@ -387,29 +391,27 @@ impl Service {
 
         match rf.grpc_client.as_ref().unwrap().report_async(&report) {
             Ok(async_receiver) => {
-                let fut = async_receiver
-                    .and_then(|rsp| {
-                        if rsp.code != 0 {
-                            error!("[Service]do_flow_report, error, server code:{}", rsp.code);
-                        }
-
-                        Ok(())
-                    })
-                    .map_err(move |e| {
-                        error!("[Service]do_flow_report, grpc error:{}", e);
-                        match e {
-                            grpcio::Error::RpcFailure(s) => {
-                                if s.status == grpcio::RpcStatusCode::Unavailable {
-                                    s1.borrow_mut().build_grpc_client();
-                                }
+                let fut = async move {
+                    match Compat01As03::new(async_receiver).await {
+                        Ok(rsp) => {
+                            if rsp.code != 0 {
+                                error!("[Service]do_flow_report, error, server code:{}", rsp.code);
                             }
-                            _ => {}
                         }
-
-                        ()
-                    });
-
-                current_thread::spawn(fut);
+                        Err(e) => {
+                            error!("[Service]do_flow_report, grpc error:{}", e);
+                            match e {
+                                grpcio::Error::RpcFailure(s) => {
+                                    if s.status == grpcio::RpcStatusCode::UNAVAILABLE {
+                                        s1.borrow_mut().build_grpc_client();
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                };
+                tokio::task::spawn_local(fut);
             }
             Err(e) => {
                 error!("[Service]do_flow_report, grpc failed:{}", e);
@@ -497,23 +499,12 @@ impl Service {
         );
 
         // delay 5 seconds
-        let when = Instant::now() + Duration::from_millis(seconds * 1000);
-        let task = Delay::new(when)
-            .and_then(move |_| {
-                debug!("[Service]delay_post_instruction retry...");
-                s.borrow().fire_instruction(ins);
-
-                Ok(())
-            })
-            .map_err(|e| {
-                error!(
-                    "[Service]delay_post_instruction delay retry errored, err={:?}",
-                    e
-                );
-                ()
-            });
-
-        current_thread::spawn(task);
+        let task = async move {
+            tokio::time::delay_for(Duration::from_millis(seconds * 1000)).await;
+            debug!("[Service]delay_post_instruction retry...");
+            s.borrow().fire_instruction(ins);
+        };
+        tokio::task::spawn_local(task);
     }
 
     fn do_start_subservices(s: LongLiveS) {
@@ -537,32 +528,31 @@ impl Service {
         let clone2 = s.clone();
         let has_etcd = cfg.etcd_addr.len() > 0;
 
-        let fut = super::start_subservice(cfg, etcdcfg, ins_tx)
-            .and_then(move |subservices| {
-                let s2 = &mut clone.borrow_mut();
-                let vec_subservices = &mut subservices.borrow_mut();
-                while let Some(ctl) = vec_subservices.pop() {
-                    s2.subservices.push(ctl);
+        let fut = async move {
+            match super::start_subservice(cfg, etcdcfg, ins_tx).await {
+                Ok(subservices) => {
+                    let s2 = &mut clone.borrow_mut();
+                    let vec_subservices = &mut subservices.borrow_mut();
+                    while let Some(ctl) = vec_subservices.pop() {
+                        s2.subservices.push(ctl);
+                    }
+    
+                    s2.state = STATE_RUNNING;
+    
+                    s2.start_monitor_timer(clone.clone());
+    
+                    if has_etcd {
+                        // start to monitor etcd
+                        s2.do_write_etcd_instance_data();
+                        s2.fire_instruction(Instruction::MonitorEtcdConfig);
+                    }
                 }
-
-                s2.state = STATE_RUNNING;
-
-                s2.start_monitor_timer(clone.clone());
-
-                if has_etcd {
-                    // start to monitor etcd
-                    s2.do_write_etcd_instance_data();
-                    s2.fire_instruction(Instruction::MonitorEtcdConfig);
+                Err(_) => {
+                    Service::delay_post_instruction(clone2, 50, Instruction::StartSubServices);
                 }
-
-                Ok(())
-            })
-            .or_else(|_| {
-                Service::delay_post_instruction(clone2, 50, Instruction::StartSubServices);
-                Err(())
-            });
-
-        current_thread::spawn(fut);
+            }
+        };
+        tokio::task::spawn_local(fut);
     }
 
     fn do_restart(s1: LongLiveS) {
@@ -585,7 +575,7 @@ impl Service {
         let tx = &self.ins_tx;
         match tx.as_ref() {
             Some(ref tx) => {
-                if let Err(e) = tx.unbounded_send(ins) {
+                if let Err(e) = tx.send(ins) {
                     error!("[Service]fire_instruction failed:{}", e);
                 }
             }
@@ -605,26 +595,20 @@ impl Service {
         self.save_monitor_trigger(trigger);
 
         // tokio timer, every 3 seconds
-        let task = Interval::new(
-            Instant::now(),
-            Duration::from_millis(SERVICE_MONITOR_INTERVAL),
-        )
-        .skip(1)
-        .take_until(tripwire)
-        .for_each(move |instant| {
-            debug!("[Service]monitor timer fire; instant={:?}", instant);
+        let task = async move {
+            tokio::time::interval(Duration::from_millis(SERVICE_MONITOR_INTERVAL))
+            .skip(1)
+            .take_until(tripwire)
+            .for_each(move |instant| {
+                debug!("[Service]monitor timer fire; instant={:?}", instant);
 
-            let rf = s2.borrow_mut();
-            rf.fire_instruction(Instruction::ServiceMonitor);
+                let rf = s2.borrow_mut();
+                rf.fire_instruction(Instruction::ServiceMonitor);
 
-            Ok(())
-        })
-        .map_err(|e| error!("[Service]start_monitor_timer interval errored; err={:?}", e))
-        .then(|_| {
+                future::ready(())
+            }).await;
             info!("[Service] monitor timer future completed");
-            Ok(())
-        });
-
-        current_thread::spawn(task);
+        };
+        tokio::task::spawn_local(task);
     }
 }

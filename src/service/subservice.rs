@@ -2,17 +2,16 @@ use crate::config::{EtcdConfig, ServerCfg};
 use crate::myrpc;
 use crate::tlsserver::{Listener, WSStreamInfo};
 use crate::tunnels;
-use futures::future::lazy;
-use futures::stream::iter_ok;
-use futures::stream::Stream;
-use futures::sync::mpsc::{unbounded, UnboundedSender};
-use futures::Future;
+
+use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
+use futures::prelude::*;
 use log::{error, info};
 use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
 use std::sync::Arc;
-use tokio::runtime::current_thread::{self, Runtime};
+use futures::channel::oneshot;
+use futures::future::lazy;
 
 pub enum SubServiceCtlCmd {
     Stop,
@@ -25,6 +24,17 @@ pub enum SubServiceCtlCmd {
 pub enum SubServiceType {
     Listener,
     TunMgr,
+}
+
+impl fmt::Display for SubServiceType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s;
+        match self {
+            SubServiceType::Listener => s = "Listener",
+            SubServiceType::TunMgr => s = "TunMgr",
+        }
+        write!(f, "({})", s)
+    }
 }
 
 impl fmt::Display for SubServiceCtlCmd {
@@ -54,22 +64,28 @@ pub struct TunMgrStub {
 fn start_listener(
     cfg: Arc<ServerCfg>,
     etcdcfg: Arc<EtcdConfig>,
-    r_tx: futures::Complete<bool>,
+    r_tx: oneshot::Sender<bool>,
     tmstubs: Vec<TunMgrStub>,
 ) -> SubServiceCtl {
     info!("[SubService]start_listener, tm count:{}", tmstubs.len(),);
 
-    let (tx, rx) = unbounded();
+    let (tx, rx) = unbounded_channel();
     let handler = std::thread::spawn(move || {
-        let mut rt = Runtime::new().unwrap();
-        let fut = lazy(move || {
+        let mut basic_rt = tokio::runtime::Builder::new()
+        .basic_scheduler()
+        .enable_all()
+        .build().unwrap();
+        // let handle = rt.handle();
+        let local = tokio::task::LocalSet::new();
+
+        let fut = lazy(move |_| {
             let listener = Listener::new(&cfg, &etcdcfg, tmstubs);
             // thread code
             if let Err(e) = listener.borrow_mut().init(listener.clone()) {
                 error!("[SubService]listener start failed:{}", e);
 
                 r_tx.send(false).unwrap();
-                return Ok(());
+                return;
             }
 
             r_tx.send(true).unwrap();
@@ -90,16 +106,13 @@ fn start_listener(
                     }
                 }
 
-                Ok(())
+                future::ready(())
             });
 
-            current_thread::spawn(fut);
-
-            Ok(())
+            tokio::task::spawn_local(fut);
         });
 
-        rt.spawn(fut);
-        rt.run().unwrap();
+        local.block_on(&mut basic_rt, fut);
     });
 
     SubServiceCtl {
@@ -112,20 +125,26 @@ fn start_listener(
 fn start_one_tunmgr(
     cfg: Arc<ServerCfg>,
     etcdcfg: Arc<EtcdConfig>,
-    r_tx: futures::Complete<bool>,
+    r_tx: oneshot::Sender<bool>,
     ins_tx: super::TxType,
 ) -> SubServiceCtl {
-    let (tx, rx) = unbounded();
+    let (tx, rx) = unbounded_channel();
     let handler = std::thread::spawn(move || {
-        let mut rt = Runtime::new().unwrap();
-        let fut = lazy(move || {
+        let mut basic_rt = tokio::runtime::Builder::new()
+        .basic_scheduler()
+        .enable_all()
+        .build().unwrap();
+        // let handle = rt.handle();
+        let local = tokio::task::LocalSet::new();
+
+        let fut = lazy(move |_| {
             let tunmgr = tunnels::TunMgr::new(&cfg, &etcdcfg, ins_tx);
             // thread code
             if let Err(e) = tunmgr.borrow_mut().init(tunmgr.clone()) {
                 error!("[SubService]tunmgr start failed:{}", e);
 
                 r_tx.send(true).unwrap();
-                return Ok(());
+                return;
             }
 
             r_tx.send(true).unwrap();
@@ -163,16 +182,13 @@ fn start_one_tunmgr(
                       // }
                 }
 
-                Ok(())
+                future::ready(())
             });
 
-            current_thread::spawn(fut);
-
-            Ok(())
+            tokio::task::spawn_local(fut);
         });
 
-        rt.spawn(fut);
-        rt.run().unwrap();
+        local.block_on(&mut basic_rt, fut);
     });
 
     SubServiceCtl {
@@ -182,73 +198,90 @@ fn start_one_tunmgr(
     }
 }
 
-fn to_future(
-    rx: futures::Oneshot<bool>,
+async fn to_future(
+    rx: oneshot::Receiver<bool>,
     ctrl: SubServiceCtl,
-) -> impl Future<Item = SubServiceCtl, Error = ()> {
-    let fut = rx
-        .and_then(|v| if v { Ok(ctrl) } else { Err(futures::Canceled) })
-        .or_else(|_| Err(()));
-
-    fut
+) -> std::result::Result<SubServiceCtl, () > {
+    match rx.await {
+        Ok(v) => {
+            match v {
+                true => {
+                    Ok(ctrl)
+                }
+                false => {
+                    Err(())
+                }
+            }
+        }
+        Err(_) => {
+            Err(())
+        }
+    }
 }
 
 type SubsctlVec = Rc<RefCell<Vec<SubServiceCtl>>>;
 
-fn start_tunmgr(
+async fn start_tunmgr(
     cfg: std::sync::Arc<ServerCfg>,
     etcdcfg: Arc<EtcdConfig>,
     ins_tx: super::TxType,
-) -> impl Future<Item = SubsctlVec, Error = ()> {
+) -> std::result::Result<SubsctlVec, SubsctlVec> {
     let cpus = num_cpus::get();
-
-    let stream = iter_ok::<_, ()>(vec![0; cpus]);
+    let sv = stream::iter(vec![0; cpus]);
     let subservices = Rc::new(RefCell::new(Vec::new()));
-    let subservices2 = subservices.clone();
     let subservices3 = subservices.clone();
+    let failed = Rc::new(RefCell::new(false));
+    let failed3 = failed.clone();
 
-    let fut = stream
+    let fut = sv
         .for_each(move |_| {
-            let (tx, rx) = futures::oneshot();
-            let subservices = subservices.clone();
-            to_future(
-                rx,
-                start_one_tunmgr(cfg.clone(), etcdcfg.clone(), tx, ins_tx.clone()),
-            )
-            .and_then(move |ctl| {
-                subservices.borrow_mut().push(ctl);
-                Ok(())
-            })
-        })
-        .and_then(move |_| Ok(subservices2))
-        .or_else(move |_| {
-            let vec_subservices = &mut subservices3.borrow_mut();
-            // WARNING: block current thread
-            cleanup_subservices(vec_subservices);
+            let (tx, rx) = oneshot::channel();
+            let failed2 = failed.clone();
+            let subservices2 = subservices.clone();
+            let cfgx = cfg.clone();
+            let etcdcfgx = etcdcfg.clone();
+            let ins_tx = ins_tx.clone();
+            let ctl = async move {
+                let ct = to_future(rx, start_one_tunmgr(cfgx, etcdcfgx, tx, ins_tx)).await;
+                match ct {
+                    Ok(c) => {
+                        subservices2.borrow_mut().push(c);
+                    }
+                    _ => {
+                        *failed2.borrow_mut() = true;
+                    }
+                }
+            };
 
-            Err(())
+            ctl
         });
 
-    fut
+    fut.await;
+
+    if *failed3.borrow() {
+        Ok(subservices3)
+    } else {
+        Err(subservices3)
+    }
 }
 
-pub fn start_subservice(
+pub async fn start_subservice(
     cfg: std::sync::Arc<ServerCfg>,
     etcdcfg: Arc<EtcdConfig>,
     ins_tx: super::TxType,
-) -> impl Future<Item = SubsctlVec, Error = ()> {
+) -> std::result::Result<SubsctlVec,()> {
     let cfg2 = cfg.clone();
 
-    // start tunmgr first
-    let tunmgr_fut = start_tunmgr(cfg.clone(), etcdcfg.clone(), ins_tx.clone());
+    let ff = async move {
+        // start tunmgr first
+        let subservices = start_tunmgr(cfg.clone(), etcdcfg.clone(), ins_tx.clone()).await?;
 
-    // finally start listener
-    let listener_fut = tunmgr_fut.and_then(move |tcp_sss| {
-        let (tx, rx) = futures::oneshot();
+        // finally start listener
+        let (tx, rx) = oneshot::channel();
         //let v = subservices.clone();
         let mut tcp_sss_vec = Vec::new();
         {
-            let ss = tcp_sss.borrow();
+            let ss = subservices.borrow();
             for s in ss.iter() {
                 let tx = s.ctl_tx.as_ref().unwrap().clone();
                 tcp_sss_vec.push(TunMgrStub { ctl_tx: tx });
@@ -257,44 +290,50 @@ pub fn start_subservice(
 
         let mut v = Vec::new();
         {
-            let mut ss = tcp_sss.borrow_mut();
+            let mut ss = subservices.borrow_mut();
             while let Some(p) = ss.pop() {
                 v.push(p);
             }
         }
 
-        let v = Rc::new(RefCell::new(v));
-        let v2 = v.clone();
-        to_future(rx, start_listener(cfg2.clone(), etcdcfg, tx, tcp_sss_vec))
-            .and_then(|ctl| {
-                v.borrow_mut().push(ctl);
+        match to_future(rx, start_listener(cfg2.clone(), etcdcfg, tx, tcp_sss_vec)).await {
+            Ok(ctl) => subservices.borrow_mut().push(ctl),
+            Err(_) => return Err(subservices),
+        }
 
-                Ok(v)
-            })
-            .or_else(move |_| {
-                let vec_subservices = &mut v2.borrow_mut();
-                // WARNING: block current thread
-                cleanup_subservices(vec_subservices);
-                Err(())
-            })
-    });
-
-    listener_fut
+        Ok(subservices)
+    };
+ 
+    match ff.await {
+        Ok(v) => Ok(v),
+        Err(v) => {
+            let vec_subservices = &mut v.borrow_mut();
+            // WARNING: block current thread
+            cleanup_subservices(vec_subservices);
+            Err(())
+        }
+    }
 }
 
 pub fn cleanup_subservices(subservices: &mut Vec<SubServiceCtl>) {
     for s in subservices.iter_mut() {
         let cmd = super::subservice::SubServiceCtlCmd::Stop;
-        s.ctl_tx.as_ref().unwrap().unbounded_send(cmd).unwrap();
+        match s.ctl_tx.as_ref().unwrap().send(cmd) {
+            Err(e) => {
+                info!("[SubService] send ctl {} cmd failed:{}", s.sstype, e);
+            }
+            _ => {}
+        }
         s.ctl_tx = None;
     }
 
     // WARNING: thread block wait!
     for s in subservices.iter_mut() {
+        info!("[SubService] try to jon handle, sstype:{}", s.sstype);
         let h = &mut s.handler;
         let h = h.take();
         h.unwrap().join().unwrap();
 
-        info!("[SubService] jon handle completed");
+        info!("[SubService] jon handle completed, sstype:{}", s.sstype);
     }
 }

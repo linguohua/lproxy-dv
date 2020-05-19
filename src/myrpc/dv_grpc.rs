@@ -75,7 +75,7 @@ impl DvExportClient {
     pub fn uuid_cfg_changed_async(&self, req: &super::dv::CfgChangeNotify) -> ::grpcio::Result<::grpcio::ClientUnaryReceiver<super::dv::Empty>> {
         self.uuid_cfg_changed_async_opt(req, ::grpcio::CallOption::default())
     }
-    pub fn spawn<F>(&self, f: F) where F: ::futures::Future<Item = (), Error = ()> + Send + 'static {
+    pub fn spawn<F>(&self, f: F) where F: ::futures_01::Future<Item = (), Error = ()> + Send + 'static {
         self.client.spawn(f)
     }
 }
