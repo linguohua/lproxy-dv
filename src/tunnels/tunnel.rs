@@ -1,4 +1,4 @@
-use super::{Cmd, LongLiveUA, Reqq, THeader, THEADER_SIZE};
+use super::{Cmd, LongLiveUD, Reqq, THeader, THEADER_SIZE};
 use crate::lws::{RMessage, TMessage, WMessage};
 use byte::*;
 use tokio::sync::mpsc::UnboundedSender;
@@ -47,7 +47,7 @@ pub struct Tunnel {
     pub recv_bytes_counter: u64,
     pub send_bytes_counter: u64,
 
-    pub account: LongLiveUA,
+    pub account: LongLiveUD,
 }
 
 impl Tunnel {
@@ -59,7 +59,7 @@ impl Tunnel {
         cap: usize,
         req_quota: u32,
         tun_quota: u32,
-        account: LongLiveUA,
+        account: LongLiveUD,
         is_for_dns: bool,
     ) -> LongLiveTun {
         let has_flowctl;

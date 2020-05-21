@@ -1,5 +1,5 @@
 use super::Tunnel;
-use super::{LongLiveTM, LongLiveUA, UserAccount};
+use super::{LongLiveTM, LongLiveUD, UserDevice};
 use crate::tlsserver::WSStreamInfo;
 use futures::prelude::*;
 use log::{debug, info};
@@ -8,8 +8,8 @@ use tokio;
 pub fn serve_websocket(
     wsinfo: WSStreamInfo,
     tun_quota: u32,
-    accref: &mut UserAccount,
-    account: LongLiveUA,
+    accref: &mut UserDevice,
+    account: LongLiveUD,
     s: LongLiveTM,
 ) {
     let mut wsinfo = wsinfo;

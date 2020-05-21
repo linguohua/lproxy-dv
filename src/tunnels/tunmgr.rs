@@ -26,7 +26,7 @@ pub struct TunMgr {
     discarded: bool,
     ins_tx: TxType,
     pub token_key: String,
-    account_map: HashMap<String, super::LongLiveUA>,
+    account_map: HashMap<String, super::LongLiveUD>,
     grpc_addr: String,
     grpc_client: Option<Arc<myrpc::DeviceCfgPullClient>>,
 }
@@ -118,7 +118,7 @@ impl TunMgr {
 
     pub fn on_tunnel_created(
         &mut self,
-        accref: &mut super::UserAccount,
+        accref: &mut super::UserDevice,
         tun: Rc<RefCell<Tunnel>>,
     ) -> Result<(), ()> {
         let id;
@@ -253,13 +253,13 @@ impl TunMgr {
         tokio::task::spawn_local(task);
     }
 
-    pub fn allocate_account(&mut self, uuid: &str, ll: LongLiveTM) -> super::LongLiveUA {
+    pub fn allocate_account(&mut self, uuid: &str, ll: LongLiveTM) -> super::LongLiveUD {
         match self.account_map.get(uuid) {
             Some(a) => {
                 return a.clone();
             }
             None => {
-                let v = super::UserAccount::new(uuid.to_string(), self.has_grpc(), ll);
+                let v = super::UserDevice::new(uuid.to_string(), self.has_grpc(), ll);
                 self.account_map.insert(uuid.to_string(), v.clone());
 
                 return v;

@@ -10,9 +10,9 @@ use crate::lws::{RMessage, WMessage};
 use tokio::sync::mpsc::UnboundedSender;
 use crate::udpx::{UdpXMgr, LongLiveX};
 
-pub type LongLiveUA = Rc<RefCell<UserAccount>>;
+pub type LongLiveUD = Rc<RefCell<UserDevice>>;
 
-pub struct UserAccount {
+pub struct UserDevice {
     pub uuid: String,
     need_cfg_pull: bool,
     is_in_pulling: bool,
@@ -26,10 +26,10 @@ pub struct UserAccount {
     udpx_mgr : LongLiveX,
 }
 
-impl UserAccount {
-    pub fn new(uuid: String, has_grpc: bool, tm: super::LongLiveTM) -> LongLiveUA {
+impl UserDevice {
+    pub fn new(uuid: String, has_grpc: bool, tm: super::LongLiveTM) -> LongLiveUD {
         let need_cfg_pull = has_grpc;
-        let v = UserAccount {
+        let v = UserDevice {
             uuid,
             need_cfg_pull,
             is_in_pulling: false,
@@ -98,7 +98,7 @@ impl UserAccount {
         self.quota_per_second = (bandwidth_limit_kbs * 1000) as usize;
     }
 
-    pub fn serve_tunnel_create(&mut self, wsinfo: WSStreamInfo, ll: LongLiveUA) {
+    pub fn serve_tunnel_create(&mut self, wsinfo: WSStreamInfo, ll: LongLiveUD) {
         if self.need_cfg_pull {
             self.wait_tunnels.push(wsinfo);
 
@@ -116,7 +116,7 @@ impl UserAccount {
         );
     }
 
-    fn start_pull_cfg(&mut self, ll: LongLiveUA) {
+    fn start_pull_cfg(&mut self, ll: LongLiveUD) {
         if self.is_in_pulling {
             return;
         }
@@ -140,7 +140,7 @@ impl UserAccount {
                         Ok(rsp) => {
                             if rsp.code != 0 {
                                 error!(
-                                    "[UserAccount]start_pull_cfg, error, server code:{}",
+                                    "[UserDevice]start_pull_cfg, error, server code:{}",
                                     rsp.code
                                 );
                             }
@@ -150,7 +150,7 @@ impl UserAccount {
                             rf.on_cfg_pull_completed(rsp, ll1.clone());
                         },
                         Err(e) => {
-                            error!("[UserAccount]start_pull_cfg, grpc error:{}", e);
+                            error!("[UserDevice]start_pull_cfg, grpc error:{}", e);
                             let mut rf = ll2.borrow_mut();
                             match e {
                                 grpcio::Error::RpcFailure(s) => {
@@ -170,17 +170,17 @@ impl UserAccount {
                 tokio::task::spawn_local(fut);
             }
             Err(e) => {
-                error!("[UserAccount]start_pull_cfg, grpc failed:{}", e);
+                error!("[UserDevice]start_pull_cfg, grpc failed:{}", e);
                 self.is_in_pulling = false;
                 self.on_cfg_pull_failed();
             }
         }
     }
 
-    fn on_cfg_pull_completed(&mut self, rsp: myrpc::CfgPullResult, ll: LongLiveUA) {
+    fn on_cfg_pull_completed(&mut self, rsp: myrpc::CfgPullResult, ll: LongLiveUD) {
         if rsp.code != 0 {
             error!(
-                "[UserAccount]on_cfg_pull_completed, uuid:{}, hub server reject, code:{}",
+                "[UserDevice]on_cfg_pull_completed, uuid:{}, hub server reject, code:{}",
                 self.uuid, rsp.code
             );
             self.on_cfg_pull_failed();
