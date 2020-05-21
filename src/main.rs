@@ -5,6 +5,7 @@ mod service;
 mod tlsserver;
 mod token;
 mod tunnels;
+mod udpx;
 
 use log::{info};
 use service::Service;

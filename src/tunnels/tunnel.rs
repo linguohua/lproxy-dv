@@ -121,6 +121,9 @@ impl Tunnel {
             Cmd::Pong => {
                 self.on_pong(bs);
             }
+            Cmd::UdpX => {
+                self.on_udpx_north(msg);
+            },
             _ => {
                 if self.is_for_dns {
                     self.on_tunnel_dns_msg(msg, tl);
@@ -691,5 +694,10 @@ impl Tunnel {
         self.account
             .borrow_mut()
             .poll_tunnel_quota_with(bytes_cosume, waker)
+    }
+
+    fn on_udpx_north(&mut self, msg: RMessage) {
+        // forward to account
+        self.account.borrow_mut().on_udpx_north(self.tx.clone(), msg);
     }
 }

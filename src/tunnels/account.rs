@@ -6,6 +6,9 @@ use log::error;
 use std::cell::RefCell;
 use std::rc::Rc;
 use futures::compat::Compat01As03;
+use crate::lws::{RMessage, WMessage};
+use tokio::sync::mpsc::UnboundedSender;
+use crate::udpx::{UdpXMgr, LongLiveX};
 
 pub type LongLiveUA = Rc<RefCell<UserAccount>>;
 
@@ -20,6 +23,7 @@ pub struct UserAccount {
     tm: super::LongLiveTM,
 
     pub my_tunnels_ids: Vec<usize>,
+    udpx_mgr : LongLiveX,
 }
 
 impl UserAccount {
@@ -35,6 +39,7 @@ impl UserAccount {
             wait_tunnels: Vec::with_capacity(20),
             my_tunnels_ids: Vec::with_capacity(20),
             tm,
+            udpx_mgr: UdpXMgr::new(),
         };
 
         Rc::new(RefCell::new(v))
@@ -213,5 +218,11 @@ impl UserAccount {
 
     pub fn forget(&mut self, tunnel_id: usize) {
         self.my_tunnels_ids.retain(|&x| x != tunnel_id);
+    }
+
+    pub fn on_udpx_north(&mut self, tunnel_tx: UnboundedSender<WMessage>, msg: RMessage) {
+        // on_udp_proxy_north(&mut self, lx:LongLiveX, tunnel_tx: UnboundedSender<WMessage>, mut msg: RMessage)
+        let udpx_mgr = &self.udpx_mgr;
+        udpx_mgr.borrow_mut().on_udp_proxy_north(udpx_mgr.clone(), tunnel_tx, msg);
     }
 }

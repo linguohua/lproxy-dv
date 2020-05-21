@@ -15,6 +15,7 @@ pub enum Cmd {
     ReqClientQuota = 7,
     Ping = 8,
     Pong = 9,
+    UdpX = 10,
 }
 
 #[derive(Debug)]
@@ -59,6 +60,7 @@ impl From<u8> for Cmd {
             7 => Cmd::ReqClientQuota,
             8 => Cmd::Ping,
             9 => Cmd::Pong,
+            10 => Cmd::UdpX,
             _ => panic!("unsupport {} to Cmd", v),
         }
     }
