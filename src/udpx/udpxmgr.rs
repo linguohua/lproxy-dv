@@ -8,7 +8,7 @@ use super::{LongLiveC,UStub, Cache};
 use crate::lws::{RMessage, WMessage};
 use bytes::Buf;
 use byte::*;
-use crate::tunnels::{THEADER_SIZE,Cmd};
+use crate::tunnels::{Cmd};
 use std::net::{IpAddr::{self, V4, V6}, Ipv6Addr, Ipv4Addr};
 use super::AddressPair;
 
@@ -45,7 +45,7 @@ impl UdpXMgr {
         } else {
             content_size += 19; // 1 + 2 + 16
         }
-        let hsize = 2 + 1 + THEADER_SIZE;
+        let hsize = 2 + 1;
         let total = hsize + content_size;
 
         let mut buf = vec![0; total];
@@ -99,7 +99,7 @@ impl UdpXMgr {
         let src_addr = UdpXMgr::read_socketaddr(bs, offset);
         let dst_addr = UdpXMgr::read_socketaddr(bs, offset);
 
-        let skip = *offset;
+        let skip = 3 + *offset;
         let mut bb = bytes::Bytes::from(bsv);
         bb.advance(skip as usize);
 
