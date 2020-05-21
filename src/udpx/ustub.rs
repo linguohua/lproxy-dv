@@ -12,13 +12,18 @@ use tokio::net::UdpSocket;
 use bytes::Bytes;
 use crate::lws::{WMessage};
 use std::os::unix::io::AsRawFd;
+use fnv::FnvHashSet as HashSet;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 type TxType = UnboundedSender<(bytes::Bytes, std::net::SocketAddr)>;
+type TargetSet = Rc<RefCell<HashSet<SocketAddr>>>;
 
 pub struct UStub {
     rawfd: RawFd,
     tx: Option<TxType>,
     tigger: Option<Trigger>,
+    target_set: TargetSet,
 }
 
 impl UStub {
@@ -27,6 +32,7 @@ impl UStub {
             rawfd: 0,
             tx: None, 
             tigger: None,
+            target_set: Rc::new(RefCell::new(HashSet::default())),
         };
 
         stub.start_udp_socket(src_addr, tunnel_tx, ll)?;
@@ -34,12 +40,13 @@ impl UStub {
         Ok(stub)
     }
 
-    pub fn on_udp_proxy_north(&self, msg: Bytes, dst_addr: SocketAddr) {
+    pub fn on_udp_proxy_north(&mut self, msg: Bytes, dst_addr: SocketAddr) {
         if self.tx.is_none() {
             error!("[UStub] on_udp_proxy_north failed, no tx");
             return;
         }
 
+        self.target_set.borrow_mut().insert(dst_addr);
         match self.tx.as_ref().unwrap().send((msg, dst_addr)){
             Err(e) => {
                 error!("[UStub]on_udp_proxy_north, send tx msg failed:{}", e);
@@ -92,6 +99,8 @@ impl UStub {
         let ll2 = ll.clone();
         let src_addr1 = *src_addr;
         let src_addr2 = *src_addr;
+        let target_hashset = self.target_set.clone();
+
         // send future
         let send_fut = rx.map(move |x|{Ok(x)}).forward(a_sink);
         let receive_fut = a_stream
@@ -99,17 +108,18 @@ impl UStub {
         .for_each(move |rr| {
             match rr {
                 Ok((message, north_src_addr)) => {
-                    // TODO: any north_src_addr can send packets to device, maybe a security issue
-                    let rf = ll.borrow();
-                    // post to manager
-                    rf.on_udp_msg_south(message, &north_src_addr, &src_addr1, tunnel_tx.clone());
+                    // ONLY those north ip in target set cand send packets to device
+                    if target_hashset.borrow().contains(&north_src_addr) {
+                        let rf = ll.borrow();
+                        // post to manager
+                        rf.on_udp_msg_south(message, &north_src_addr, &src_addr1, tunnel_tx.clone());
+                    }
                 },
                 Err(e) => error!("[UStub] start_udp_socket for_each failed:{}", e)
             };
 
             future::ready(())
         });
-
 
         // Wait for one future to complete.
         let select_fut = async move {

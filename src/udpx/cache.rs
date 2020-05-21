@@ -37,9 +37,9 @@ impl Cache {
         }
     }
 
-    pub fn get(&mut self, key: &CacheKey) -> Option<&UStub> {
-        match self.entries.get(key) {
-            Some((ref v, ref k)) => {
+    pub fn get(&mut self, key: &CacheKey) -> Option<&mut UStub> {
+        match self.entries.get_mut(key) {
+            Some((ref mut v, ref k)) => {
                 self.expirations.reset(k, Duration::from_secs(TTL_SECS));
                 return Some(v)
             }

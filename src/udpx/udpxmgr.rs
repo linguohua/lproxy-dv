@@ -13,7 +13,6 @@ use std::net::{IpAddr::{self, V4, V6}, Ipv6Addr, Ipv4Addr};
 
 pub type LongLiveX = Rc<RefCell<UdpXMgr>>;
 
-
 pub struct UdpXMgr {
     cache: LongLiveC,
 }
