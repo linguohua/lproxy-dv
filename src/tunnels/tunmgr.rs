@@ -26,7 +26,7 @@ pub struct TunMgr {
     discarded: bool,
     ins_tx: TxType,
     pub token_key: String,
-    account_map: HashMap<String, super::LongLiveUD>,
+    device_map: HashMap<String, super::LongLiveUD>,
     grpc_addr: String,
     grpc_client: Option<Arc<myrpc::DeviceCfgPullClient>>,
 }
@@ -38,7 +38,7 @@ impl TunMgr {
         Rc::new(RefCell::new(TunMgr {
             tunnel_id: 0,
             tunnels_map: HashMap::default(),
-            account_map: HashMap::default(),
+            device_map: HashMap::default(),
             keepalive_trigger: None,
             discarded: false,
             dns_server_addr,
@@ -60,8 +60,8 @@ impl TunMgr {
         self.grpc_client = None;
 
         let has_grpc = self.has_grpc();
-        let account_map = &self.account_map;
-        for (_, a) in account_map.iter() {
+        let device_map = &self.device_map;
+        for (_, a) in device_map.iter() {
             let mut a = a.borrow_mut();
             a.set_need_pull(has_grpc);
         }
@@ -136,7 +136,7 @@ impl TunMgr {
     pub fn on_tunnel_closed(&mut self, tun: Rc<RefCell<Tunnel>>) {
         let mut tun = tun.borrow_mut();
         let id = tun.tunnel_id;
-        tun.account.borrow_mut().forget(id);
+        tun.device.borrow_mut().forget(id);
         self.tunnels_map.remove(&id);
 
         tun.on_closed();
@@ -178,7 +178,7 @@ impl TunMgr {
             tun.send_bytes_counter = 0;
             tun.recv_bytes_counter = 0;
 
-            let uuid = &tun.account.borrow().uuid;
+            let uuid = &tun.device.borrow().uuid;
             if uuid.len() < 1 {
                 continue;
             }
@@ -214,8 +214,8 @@ impl TunMgr {
     }
 
     fn quota_reset(&mut self) {
-        let account_map = &self.account_map;
-        for (_, a) in account_map.iter() {
+        let device_map = &self.device_map;
+        for (_, a) in device_map.iter() {
             let mut a = a.borrow_mut();
             a.reset_quota();
         }
@@ -253,14 +253,14 @@ impl TunMgr {
         tokio::task::spawn_local(task);
     }
 
-    pub fn allocate_account(&mut self, uuid: &str, ll: LongLiveTM) -> super::LongLiveUD {
-        match self.account_map.get(uuid) {
+    pub fn allocate_device(&mut self, uuid: &str, ll: LongLiveTM) -> super::LongLiveUD {
+        match self.device_map.get(uuid) {
             Some(a) => {
                 return a.clone();
             }
             None => {
                 let v = super::UserDevice::new(uuid.to_string(), self.has_grpc(), ll);
-                self.account_map.insert(uuid.to_string(), v.clone());
+                self.device_map.insert(uuid.to_string(), v.clone());
 
                 return v;
             }
@@ -268,7 +268,7 @@ impl TunMgr {
     }
 
     pub fn on_kickout_uuid(&mut self, uuid: String) {
-        let ua = self.account_map.remove(&uuid);
+        let ua = self.device_map.remove(&uuid);
         match ua {
             Some(u) => {
                 let u = u.borrow();
@@ -287,9 +287,9 @@ impl TunMgr {
         }
     }
 
-    pub fn on_account_cfg_changed(&mut self, notify: myrpc::CfgChangeNotify) {
+    pub fn on_device_cfg_changed(&mut self, notify: myrpc::CfgChangeNotify) {
         let uuid = &notify.uuid;
-        let ua = self.account_map.get(uuid);
+        let ua = self.device_map.get(uuid);
         match ua {
             Some(u) => {
                 u.borrow_mut()

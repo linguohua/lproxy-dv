@@ -161,7 +161,7 @@ fn start_one_tunmgr(
                         {
                             ua = tunmgr
                                 .borrow_mut()
-                                .allocate_account(&t.uuid, tunmgr.clone());
+                                .allocate_device(&t.uuid, tunmgr.clone());
                         }
 
                         ua.borrow_mut().serve_tunnel_create(t, ua.clone());
@@ -176,7 +176,7 @@ fn start_one_tunmgr(
                     }
                     SubServiceCtlCmd::CfgChangeNotify(cfg) => {
                         let f = tunmgr.clone();
-                        f.borrow_mut().on_account_cfg_changed(cfg);
+                        f.borrow_mut().on_device_cfg_changed(cfg);
                     } // _ => {
                       //     error!("[SubService]tunmgr unknown ctl cmd:{}", cmd);
                       // }

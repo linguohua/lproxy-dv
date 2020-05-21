@@ -47,7 +47,7 @@ pub struct Tunnel {
     pub recv_bytes_counter: u64,
     pub send_bytes_counter: u64,
 
-    pub account: LongLiveUD,
+    pub device: LongLiveUD,
 }
 
 impl Tunnel {
@@ -59,7 +59,7 @@ impl Tunnel {
         cap: usize,
         req_quota: u32,
         tun_quota: u32,
-        account: LongLiveUD,
+        device: LongLiveUD,
         is_for_dns: bool,
     ) -> LongLiveTun {
         let has_flowctl;
@@ -99,7 +99,7 @@ impl Tunnel {
             req_quota,
             recv_bytes_counter: 0,
             send_bytes_counter: 0,
-            account,
+            device,
         }))
     }
 
@@ -691,13 +691,13 @@ impl Tunnel {
     }
 
     pub fn poll_tunnel_quota_with(&self, bytes_cosume: usize, waker: Waker) -> Result<bool, ()> {
-        self.account
+        self.device
             .borrow_mut()
             .poll_tunnel_quota_with(bytes_cosume, waker)
     }
 
     fn on_udpx_north(&mut self, msg: RMessage) {
-        // forward to account
-        self.account.borrow_mut().on_udpx_north(self.tx.clone(), msg);
+        // forward to device
+        self.device.borrow_mut().on_udpx_north(self.tx.clone(), msg);
     }
 }

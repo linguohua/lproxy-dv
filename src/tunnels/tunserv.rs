@@ -9,7 +9,7 @@ pub fn serve_websocket(
     wsinfo: WSStreamInfo,
     tun_quota: u32,
     accref: &mut UserDevice,
-    account: LongLiveUD,
+    device: LongLiveUD,
     s: LongLiveTM,
 ) {
     let mut wsinfo = wsinfo;
@@ -48,7 +48,7 @@ pub fn serve_websocket(
         tunnel_cap,
         tunnel_req_quota,
         tun_quota,
-        account,
+        device,
         is_dns,
     );
 
