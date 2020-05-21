@@ -10,7 +10,6 @@ use std::os::unix::io::RawFd;
 use nix::sys::socket::{shutdown, Shutdown};
 use tokio::net::UdpSocket;
 use bytes::Bytes;
-use super::AddressPair;
 use crate::lws::{WMessage};
 use std::os::unix::io::AsRawFd;
 
@@ -20,31 +19,28 @@ pub struct UStub {
     rawfd: RawFd,
     tx: Option<TxType>,
     tigger: Option<Trigger>,
-
-    addr_pair: AddressPair,
 }
 
 impl UStub {
-    pub fn new(addr_pair: &AddressPair, tunnel_tx: UnboundedSender<WMessage>, ll: super::LongLiveX) -> Result<Self, Error> {
+    pub fn new(src_addr: &SocketAddr, tunnel_tx: UnboundedSender<WMessage>, ll: super::LongLiveX) -> Result<Self, Error> {
         let mut stub = UStub {
             rawfd: 0,
             tx: None, 
             tigger: None,
-            addr_pair: *addr_pair,
         };
 
-        stub.start_udp_socket(addr_pair, tunnel_tx, ll)?;
+        stub.start_udp_socket(src_addr, tunnel_tx, ll)?;
 
         Ok(stub)
     }
 
-    pub fn on_udp_proxy_north(&self, msg: Bytes) {
+    pub fn on_udp_proxy_north(&self, msg: Bytes, dst_addr: SocketAddr) {
         if self.tx.is_none() {
             error!("[UStub] on_udp_proxy_north failed, no tx");
             return;
         }
 
-        match self.tx.as_ref().unwrap().send((msg, self.addr_pair.dst_addr)){
+        match self.tx.as_ref().unwrap().send((msg, dst_addr)){
             Err(e) => {
                 error!("[UStub]on_udp_proxy_north, send tx msg failed:{}", e);
             }
@@ -76,7 +72,7 @@ impl UStub {
         self.tigger = Some(trigger);
     }
 
-    fn start_udp_socket(&mut self, addr_pair: &AddressPair,
+    fn start_udp_socket(&mut self, src_addr: &SocketAddr,
         tunnel_tx: UnboundedSender<WMessage>, ll: super::LongLiveX) -> std::result::Result<(), Error> {
         // let sockudp = std::net::UdpSocket::new();
         let local_addr: SocketAddr = "0.0.0.0:0".parse().unwrap();
@@ -94,23 +90,19 @@ impl UStub {
         self.rawfd = rawfd;
 
         let ll2 = ll.clone();
-        let addr_pair1 = *addr_pair;
-        let addr_pair2 = *addr_pair;
+        let src_addr1 = *src_addr;
+        let src_addr2 = *src_addr;
         // send future
         let send_fut = rx.map(move |x|{Ok(x)}).forward(a_sink);
         let receive_fut = a_stream
         .take_until(tripwire)
         .for_each(move |rr| {
             match rr {
-                Ok((message, src_addr)) => {
-                    if src_addr != addr_pair1.dst_addr {
-                        // discard
-                        error!("[UStub] start_udp_socket src_addr != addr_pair1.dst_addr ");
-                    } else {
-                        let rf = ll.borrow();
-                        // post to manager
-                        rf.on_udp_msg_south(message, &addr_pair1.dst_addr, &addr_pair1.src_addr, tunnel_tx.clone());
-                    }
+                Ok((message, north_src_addr)) => {
+                    // TODO: any north_src_addr can send packets to device, maybe a security issue
+                    let rf = ll.borrow();
+                    // post to manager
+                    rf.on_udp_msg_south(message, &north_src_addr, &src_addr1, tunnel_tx.clone());
                 },
                 Err(e) => error!("[UStub] start_udp_socket for_each failed:{}", e)
             };
@@ -124,7 +116,7 @@ impl UStub {
             future::select(receive_fut, send_fut).await;
             info!("[UStub] udp both future completed");
             let mut rf = ll2.borrow_mut();
-            rf.on_ustub_closed(&addr_pair2);
+            rf.on_ustub_closed(&src_addr2);
         };
 
         tokio::task::spawn_local(select_fut);

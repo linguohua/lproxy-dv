@@ -10,7 +10,6 @@ use bytes::Buf;
 use byte::*;
 use crate::tunnels::{Cmd};
 use std::net::{IpAddr::{self, V4, V6}, Ipv6Addr, Ipv4Addr};
-use super::AddressPair;
 
 pub type LongLiveX = Rc<RefCell<UdpXMgr>>;
 
@@ -72,18 +71,18 @@ impl UdpXMgr {
     }
 
     pub fn on_udp_proxy_north(&mut self, lx:LongLiveX, tunnel_tx: UnboundedSender<WMessage>, msg: RMessage) {
-        let (addr_pair, msgbody) = UdpXMgr::parse_udp_north_msg(msg);
+        let (src_addr, dst_addr, msgbody) = UdpXMgr::parse_udp_north_msg(msg);
         let cache: &mut Cache = &mut self.cache.borrow_mut();
-        let mut stub = cache.get(&addr_pair);
+        let mut stub = cache.get(&src_addr);
         if stub.is_none() {
             // build new stub
-            self.build_ustub(lx, cache, tunnel_tx, &addr_pair);
-            stub = cache.get(&addr_pair);
+            self.build_ustub(lx, cache, tunnel_tx, &src_addr);
+            stub = cache.get(&src_addr);
         }
 
         match stub {
             Some(stub) => {
-                stub.on_udp_proxy_north(msgbody);
+                stub.on_udp_proxy_north(msgbody, dst_addr);
             }
             None => {
                 error!("[UdpXMgr] on_udp_proxy_north failed, no stub found");
@@ -91,7 +90,7 @@ impl UdpXMgr {
         }
     }
 
-    fn parse_udp_north_msg(mut msg: RMessage) -> (AddressPair, bytes::Bytes) {
+    fn parse_udp_north_msg(mut msg: RMessage) -> (SocketAddr, SocketAddr, bytes::Bytes) {
         let offset = &mut 0;
         let bsv = msg.buf.take().unwrap();
         let bs = &bsv[3..]; // skip the length and cmd
@@ -103,19 +102,14 @@ impl UdpXMgr {
         let mut bb = bytes::Bytes::from(bsv);
         bb.advance(skip as usize);
 
-        let addr_pair = AddressPair {
-            src_addr,
-            dst_addr,
-        };
-
-        (addr_pair, bb)
+        (src_addr, dst_addr, bb)
     }
 
-    fn build_ustub(&self, lx:LongLiveX, c: &mut Cache, tunnel_tx: UnboundedSender<WMessage>, addr_pair: &AddressPair) {
-        match UStub::new(addr_pair, tunnel_tx, lx) {
+    fn build_ustub(&self, lx:LongLiveX, c: &mut Cache, tunnel_tx: UnboundedSender<WMessage>, src_addr: &SocketAddr) {
+        match UStub::new(src_addr, tunnel_tx, lx) {
             Ok(ustub) => {
-                let addr_pair2: AddressPair = *addr_pair;
-                c.insert(self.cache.clone(), addr_pair2, ustub);
+                let src_addr2: SocketAddr = *src_addr;
+                c.insert(self.cache.clone(), src_addr2, ustub);
             }
             Err(e) => {
                 error!("[UdpXMgr] build_ustub failed:{}", e);
@@ -123,8 +117,8 @@ impl UdpXMgr {
         }
     }
 
-    pub fn on_ustub_closed(&mut self, addr_pair: &AddressPair) {
-        self.cache.borrow_mut().remove(addr_pair);
+    pub fn on_ustub_closed(&mut self, src_addr: &SocketAddr) {
+        self.cache.borrow_mut().remove(src_addr);
     }
 
     fn read_socketaddr(bs: &[u8], offset: &mut usize) -> SocketAddr {

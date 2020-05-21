@@ -7,13 +7,7 @@ use std::time::Duration;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub struct AddressPair {
-    pub src_addr:SocketAddr,
-    pub dst_addr: SocketAddr,
-}
-
-pub type CacheKey = AddressPair;
+pub type CacheKey = SocketAddr;
 pub type LongLiveC = Rc<RefCell<Cache>>;
 pub struct Cache {
     entries: HashMap<CacheKey, (UStub, delay_queue::Key)>,
