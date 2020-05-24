@@ -78,5 +78,6 @@ fn main() {
         s.borrow_mut().stop();
     };
 
-    local.block_on(&mut basic_rt, l);
+    local.spawn_local(l);
+    basic_rt.block_on(local);
 }

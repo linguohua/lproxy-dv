@@ -11,7 +11,6 @@ use std::fmt;
 use std::rc::Rc;
 use std::sync::Arc;
 use futures::channel::oneshot;
-use futures::future::lazy;
 
 pub enum SubServiceCtlCmd {
     Stop,
@@ -78,7 +77,7 @@ fn start_listener(
         // let handle = rt.handle();
         let local = tokio::task::LocalSet::new();
 
-        let fut = lazy(move |_| {
+        let fut = async move {
             let listener = Listener::new(&cfg, &etcdcfg, tmstubs);
             // thread code
             if let Err(e) = listener.borrow_mut().init(listener.clone()) {
@@ -110,9 +109,10 @@ fn start_listener(
             });
 
             tokio::task::spawn_local(fut);
-        });
+        };
 
-        local.block_on(&mut basic_rt, fut);
+        local.spawn_local(fut);
+        basic_rt.block_on(local);
     });
 
     SubServiceCtl {
@@ -137,7 +137,7 @@ fn start_one_tunmgr(
         // let handle = rt.handle();
         let local = tokio::task::LocalSet::new();
 
-        let fut = lazy(move |_| {
+        let fut = async move {
             let tunmgr = tunnels::TunMgr::new(&cfg, &etcdcfg, ins_tx);
             // thread code
             if let Err(e) = tunmgr.borrow_mut().init(tunmgr.clone()) {
@@ -186,9 +186,10 @@ fn start_one_tunmgr(
             });
 
             tokio::task::spawn_local(fut);
-        });
+        };
 
-        local.block_on(&mut basic_rt, fut);
+        local.spawn_local(fut);
+        basic_rt.block_on(local);
     });
 
     SubServiceCtl {
@@ -259,9 +260,9 @@ async fn start_tunmgr(
     fut.await;
 
     if *failed3.borrow() {
-        Ok(subservices3)
-    } else {
         Err(subservices3)
+    } else {
+        Ok(subservices3)
     }
 }
 
