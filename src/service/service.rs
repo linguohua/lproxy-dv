@@ -361,35 +361,37 @@ impl Service {
 
     fn do_flow_report(s: LongLiveS) {
         let s1 = s.clone();
-        let mut rf = s.borrow_mut();
+        let mut report = myrpc::BandwidthStatistics::new();
+        {
+            let mut rf = s.borrow_mut();
 
-        let flow_map = &rf.flow_map;
-        if flow_map.len() < 1 {
-            return;
-        }
-
-        if rf.grpc_client.is_none() {
+            let flow_map = &rf.flow_map;
+            if flow_map.len() < 1 {
+                return;
+            }
+    
+            if rf.grpc_client.is_none() {
+                // reset to new hashmap
+                rf.flow_map = HashMap::default();
+                return;
+            }
+    
+            let bwu = report.mut_statistics();
+    
+            for (uuid, bw) in flow_map.iter() {
+                let mut bu = myrpc::BandwidthUsage::new();
+                bu.set_uuid(uuid.to_string());
+                bu.set_recv_bytes(bw.recv);
+                bu.set_send_bytes(bw.send);
+    
+                bwu.push(bu);
+            }
+    
             // reset to new hashmap
             rf.flow_map = HashMap::default();
-            return;
         }
-
-        let mut report = myrpc::BandwidthStatistics::new();
-        let bwu = report.mut_statistics();
-
-        for (uuid, bw) in flow_map.iter() {
-            let mut bu = myrpc::BandwidthUsage::new();
-            bu.set_uuid(uuid.to_string());
-            bu.set_recv_bytes(bw.recv);
-            bu.set_send_bytes(bw.send);
-
-            bwu.push(bu);
-        }
-
-        // reset to new hashmap
-        rf.flow_map = HashMap::default();
-
-        match rf.grpc_client.as_ref().unwrap().report_async(&report) {
+     
+        match s.borrow_mut().grpc_client.as_ref().unwrap().report_async(&report) {
             Ok(async_receiver) => {
                 let fut = async move {
                     match Compat01As03::new(async_receiver).await {

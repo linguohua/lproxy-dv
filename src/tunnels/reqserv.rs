@@ -134,19 +134,22 @@ fn proxy_request_internal(
     };
 
     let receive_fut = stream.take_until(tripwire).for_each(move |message| {
-        let mut tun_b = tl2.borrow_mut();
-        // post to manager
         let prev_error;
-        match message {
-            Ok(m) => {
-                if tun_b.on_request_msg(m, req_idx, req_tag) {
-                    prev_error = false;
-                } else {
-                    prev_error = true;
+        {
+            let mut tun_b = tl2.borrow_mut();
+            // post to manager
+            
+            match message {
+                Ok(m) => {
+                    if tun_b.on_request_msg(m, req_idx, req_tag) {
+                        prev_error = false;
+                    } else {
+                        prev_error = true;
+                    }
                 }
-            }
-            _ => {
-                prev_error = false;
+                _ => {
+                    prev_error = false;
+                }
             }
         }
 

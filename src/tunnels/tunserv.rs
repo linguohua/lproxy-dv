@@ -31,7 +31,6 @@ pub fn serve_websocket(
     }
 
     let s2 = s.clone();
-    let mut rf = s.borrow_mut();
     let is_dns = wsinfo.is_dns;
 
     // Create a channel for our stream, which other sockets will use to
@@ -40,7 +39,9 @@ pub fn serve_websocket(
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
     let rawfd = wsinfo.rawfd;
 
-    let t = Tunnel::new(
+    let t = {
+        let mut rf = s.borrow_mut();
+        Tunnel::new(
         rf.next_tunnel_id(),
         tx,
         rawfd,
@@ -50,12 +51,16 @@ pub fn serve_websocket(
         tun_quota,
         device,
         is_dns,
-    );
+    )};
 
-    if let Err(_) = rf.on_tunnel_created(accref, t.clone()) {
-        // DROP all
-        return;
+    {
+        let mut rf = s.borrow_mut();
+        if let Err(_) = rf.on_tunnel_created(accref, t.clone()) {
+            // DROP all
+            return;
+        }
     }
+
 
     let t2 = t.clone();
 
