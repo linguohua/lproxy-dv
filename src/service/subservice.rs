@@ -68,7 +68,7 @@ fn start_listener(
 ) -> SubServiceCtl {
     info!("[SubService]start_listener, tm count:{}", tmstubs.len(),);
 
-    let (tx, rx) = unbounded_channel();
+    let (tx, mut rx) = unbounded_channel();
     let handler = std::thread::spawn(move || {
         let mut basic_rt = tokio::runtime::Builder::new()
         .basic_scheduler()
@@ -90,11 +90,12 @@ fn start_listener(
             r_tx.send(true).unwrap();
 
             // wait control signals
-            let fut = rx.for_each(move |cmd| {
+            while let Some(cmd) = rx.next().await {
                 match cmd {
                     SubServiceCtlCmd::Stop => {
                         let f = listener.clone();
                         f.borrow_mut().stop();
+                        break;
                     }
                     SubServiceCtlCmd::UpdateEtcdCfg(cfg) => {
                         let f = listener.clone();
@@ -104,11 +105,7 @@ fn start_listener(
                         error!("[SubService]listener unknown ctl cmd:{}", cmd);
                     }
                 }
-
-                future::ready(())
-            });
-
-            tokio::task::spawn_local(fut);
+            };
         };
 
         local.spawn_local(fut);
@@ -128,7 +125,7 @@ fn start_one_tunmgr(
     r_tx: oneshot::Sender<bool>,
     ins_tx: super::TxType,
 ) -> SubServiceCtl {
-    let (tx, rx) = unbounded_channel();
+    let (tx, mut rx) = unbounded_channel();
     let handler = std::thread::spawn(move || {
         let mut basic_rt = tokio::runtime::Builder::new()
         .basic_scheduler()
@@ -150,11 +147,12 @@ fn start_one_tunmgr(
             r_tx.send(true).unwrap();
 
             // wait control signals
-            let fut = rx.for_each(move |cmd| {
+            while let Some(cmd) = rx.next().await {
                 match cmd {
                     SubServiceCtlCmd::Stop => {
                         let f = tunmgr.clone();
                         f.borrow_mut().stop();
+                        break;
                     }
                     SubServiceCtlCmd::TcpTunnel(t) => {
                         let ua;
@@ -181,11 +179,7 @@ fn start_one_tunmgr(
                       //     error!("[SubService]tunmgr unknown ctl cmd:{}", cmd);
                       // }
                 }
-
-                future::ready(())
-            });
-
-            tokio::task::spawn_local(fut);
+            };
         };
 
         local.spawn_local(fut);
