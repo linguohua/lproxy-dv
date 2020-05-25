@@ -87,7 +87,6 @@ impl Cache {
     fn poll_purge(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
         while let Some(res) = ready!(self.expirations.poll_expired(cx)) {
             let entry = res?;
-            self.entries.remove(entry.get_ref());
             match self.entries.remove(entry.get_ref()) {
                 Some((mut stub, _)) => {
                     stub.cleanup();
