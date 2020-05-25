@@ -24,6 +24,7 @@ pub struct UStub {
     tx: Option<TxType>,
     tigger: Option<Trigger>,
     target_set: TargetSet,
+    src_addr: SocketAddr,
 }
 
 impl UStub {
@@ -33,6 +34,7 @@ impl UStub {
             tx: None, 
             tigger: None,
             target_set: Rc::new(RefCell::new(HashSet::default())),
+            src_addr: *src_addr,
         };
 
         stub.start_udp_socket(src_addr, tunnel_tx, ll)?;
@@ -46,6 +48,7 @@ impl UStub {
             return;
         }
 
+        info!("[UStub]on_udp_proxy_north, src_addr:{} dst_addr:{}, len:{}", self.src_addr, dst_addr, msg.len());
         self.target_set.borrow_mut().insert(dst_addr);
         match self.tx.as_ref().unwrap().send((msg, dst_addr)){
             Err(e) => {
@@ -110,9 +113,12 @@ impl UStub {
                 Ok((message, north_src_addr)) => {
                     // ONLY those north ip in target set cand send packets to device
                     if target_hashset.borrow().contains(&north_src_addr) {
+                        info!("[UStub]start_udp_socket recv, src_addr:{} dst_addr:{}, len:{}", north_src_addr, src_addr1, message.len());
                         let rf = ll.borrow();
                         // post to manager
                         rf.on_udp_msg_south(message, &north_src_addr, &src_addr1, tunnel_tx.clone());
+                    } else {
+                        error!("[UStub]start_udp_socket recv, src_addr:{} dst_addr:{}, len:{}, not in target set", north_src_addr, src_addr1, message.len());
                     }
                 },
                 Err(e) => error!("[UStub] start_udp_socket for_each failed:{}", e)
