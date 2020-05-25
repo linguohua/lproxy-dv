@@ -1,13 +1,17 @@
-use std::net::SocketAddr;
+use futures::prelude::*;
+use tokio::time::Error;
+use std::pin::Pin;
+use futures::task::{Context, Poll};
+use futures::ready;
 use tokio::time::{delay_queue, DelayQueue};
 use super::UStub;
-use futures::prelude::*;
 use fnv::FnvHashMap as HashMap;
 use std::time::Duration;
 use std::cell::RefCell;
 use std::rc::Rc;
+use log::{info};
 
-pub type CacheKey = SocketAddr;
+pub type CacheKey = std::net::SocketAddr;
 pub type LongLiveC = Rc<RefCell<Cache>>;
 pub struct Cache {
     entries: HashMap<CacheKey, (UStub, delay_queue::Key)>,
@@ -57,31 +61,62 @@ impl Cache {
     // }
 
     fn task_keepalive(&mut self, ll: LongLiveC) {
+        
         let fut = async move {
-            while let Some(entry) = ll.borrow_mut().expirations.next().await {
-                match entry {
-                    Ok(entry) => {
-                        match ll.borrow_mut().entries.remove(entry.get_ref()) {
-                            Some((mut stub, _)) => {
-                                stub.cleanup();
-                            }
-                            _ => {}
-                        }
-                    }
-                    _ => {}
-                }
+            let cf = CacheFuture::new(ll.clone());
+            match cf.await {
+                Err(_) => {}
+                _ => {}
             }
 
             ll.borrow_mut().is_in_keepalive = false;
+            info!("[Udpx-Cache] keepalive fut completed");
         };
 
         tokio::task::spawn_local(fut);
         self.is_in_keepalive = true;
+        info!("[Udpx-Cache] keepalive start");
     }
 
     pub fn remove(&mut self, key: &CacheKey) {
         if let Some((_, cache_key)) = self.entries.remove(key) {
             self.expirations.remove(&cache_key);
         }
+    }
+
+    fn poll_purge(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
+        while let Some(res) = ready!(self.expirations.poll_expired(cx)) {
+            let entry = res?;
+            self.entries.remove(entry.get_ref());
+            match self.entries.remove(entry.get_ref()) {
+                Some((mut stub, _)) => {
+                    stub.cleanup();
+                }
+                _ => {}
+            }
+        }
+
+        Poll::Ready(Ok(()))
+    }
+}
+
+struct CacheFuture {
+    cache_ll: LongLiveC,
+}
+
+impl CacheFuture {
+    pub fn new(cache_ll: LongLiveC) -> Self {
+        CacheFuture {
+            cache_ll,
+        }
+    }
+}
+
+impl Future for CacheFuture {
+    type Output =  std::result::Result<(), Error>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output>{
+        let self_mut = self.get_mut();
+        self_mut.cache_ll.borrow_mut().poll_purge(cx)
     }
 }
