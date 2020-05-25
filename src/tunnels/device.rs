@@ -2,7 +2,7 @@ use crate::config::QUOTA_RESET_INTERVAL;
 use crate::myrpc;
 use crate::tlsserver::WSStreamInfo;
 use futures::task::Waker;
-use log::error;
+use log::{info,error};
 use std::cell::RefCell;
 use std::rc::Rc;
 use futures::compat::Compat01As03;
@@ -91,10 +91,12 @@ impl UserDevice {
     }
 
     pub fn set_need_pull(&mut self, need_pull: bool) {
+        info!("[UserDevice]set_need_pull, id:{}, need_pull:{}",self.uuid, need_pull);
         self.need_cfg_pull = need_pull;
     }
 
     pub fn set_new_quota_per_second(&mut self, bandwidth_limit_kbs: u64) {
+        info!("[UserDevice]set_new_quota_per_second, id:{}, bandwidth_limit_kbs:{}",self.uuid, bandwidth_limit_kbs);
         self.quota_per_second = (bandwidth_limit_kbs * 1000) as usize;
     }
 
@@ -117,6 +119,7 @@ impl UserDevice {
     }
 
     fn start_pull_cfg(&mut self, ll: LongLiveUD) {
+        info!("[UserDevice]start_pull_cfg, id:{}",self.uuid);
         if self.is_in_pulling {
             return;
         }
@@ -178,6 +181,7 @@ impl UserDevice {
     }
 
     fn on_cfg_pull_completed(&mut self, rsp: myrpc::CfgPullResult, ll: LongLiveUD) {
+        info!("[UserDevice]on_cfg_pull_completed, id:{}",self.uuid);
         if rsp.code != 0 {
             error!(
                 "[UserDevice]on_cfg_pull_completed, uuid:{}, hub server reject, code:{}",
@@ -209,6 +213,7 @@ impl UserDevice {
     }
 
     fn on_cfg_pull_failed(&mut self) {
+        info!("[UserDevice]on_cfg_pull_failed, id:{}",self.uuid);
         self.wait_tunnels.clear();
     }
 
