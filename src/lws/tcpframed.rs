@@ -1,3 +1,4 @@
+use futures::stream::FusedStream;
 use super::{TMessage, WMessage};
 use futures::prelude::*;
 use futures::ready;
@@ -10,6 +11,7 @@ pub struct TcpFramed<T> {
     io: T,
     reading: Option<TMessage>,
     writing: Option<WMessage>,
+    has_finished: bool,
 }
 
 impl<T> TcpFramed<T> {
@@ -18,6 +20,7 @@ impl<T> TcpFramed<T> {
             io,
             reading: None,
             writing: None,
+            has_finished: false,
         }
     }
 }
@@ -45,14 +48,30 @@ where
                 // read from io
             let mut io = &mut self_mut.io;
             let pin_io = Pin::new(&mut io);
-            let n = ready!(pin_io.poll_read_buf(cx,msg))?;
-
-            if n == 0 {
-                return Poll::Ready(None);
-            }
+            match ready!(pin_io.poll_read_buf(cx,msg)) {
+                Ok(n) => {
+                    if n <= 0 {
+                        self_mut.has_finished = true;
+                        return Poll::Ready(None);
+                    }
+                }
+                Err(e) => {
+                    self_mut.has_finished = true;
+                    return Poll::Ready(Some(Err(e)));
+                }
+            };
 
             return Poll::Ready(Some(Ok(self_mut.reading.take().unwrap())));
         }
+    }
+}
+
+impl<T> FusedStream for TcpFramed<T>
+where
+    T: AsyncRead+Unpin,
+{
+    fn is_terminated(&self) -> bool {
+        self.has_finished
     }
 }
 

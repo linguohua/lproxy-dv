@@ -1,3 +1,4 @@
+use futures::stream::FusedStream;
 use super::{RMessage, WMessage};
 use bytes::BufMut;
 use futures::prelude::*;
@@ -14,6 +15,7 @@ pub struct LwsFramed<T> {
     writing: Option<WMessage>,
     write_queue: VecDeque<WMessage>,
     tail: Option<Vec<u8>>,
+    has_finished:bool,
 }
 
 impl<T> LwsFramed<T> 
@@ -26,6 +28,7 @@ where T: AsyncWrite+Unpin,
             writing: None,
             tail,
             write_queue: VecDeque::with_capacity(128),
+            has_finished:false,
         }
     }
 
@@ -106,11 +109,20 @@ where
                 // read from io
                 let mut io = &mut self_mut.io;
                 let pin_io = Pin::new(&mut io);
-                let n = ready!(pin_io.poll_read_buf(cx,msg))?;
-
-                if n == 0 {
-                    return Poll::Ready(None);
-                }
+                match ready!(pin_io.poll_read_buf(cx,msg)) {
+                    Ok(n) => {
+                        if n <= 0 {
+                            log::info!("LwsFramed poll_read_buf n <= 0, set finished:{}", n);
+                            self_mut.has_finished = true;
+                            return Poll::Ready(None);
+                        }
+                    }
+                    Err(e) => {
+                        log::info!("LwsFramed poll_read_buf error, set finished:{}", e);
+                        self_mut.has_finished = true;
+                        return Poll::Ready(Some(Err(e)));
+                    }
+                };
             }
 
             if msg.is_completed() {
@@ -119,6 +131,16 @@ where
                 return Poll::Ready(Some(Ok(self_mut.reading.take().unwrap())));
             }
         }
+    }
+}
+
+impl<T> FusedStream for LwsFramed<T>
+where
+    T: AsyncRead+Unpin,
+{
+    fn is_terminated(&self) -> bool {
+        log::info!("LwsFramed FusedStream is_terminated call:{}", self.has_finished);
+        self.has_finished
     }
 }
 
