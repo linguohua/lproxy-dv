@@ -127,8 +127,8 @@ fn proxy_request_internal(
         }
         
         info!("[Proxy]send_fut end, index:{}", req_idx);
-        // shutdown read direction
-        if let Err(e) = shutdown(rawfd, Shutdown::Read) {
+        // shutdown write direction
+        if let Err(e) = shutdown(rawfd, Shutdown::Write) {
             error!("[Proxy]shutdown rawfd error:{}", e);
         }
     };
