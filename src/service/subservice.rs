@@ -283,14 +283,6 @@ pub async fn start_subservice(
             }
         }
 
-        let mut v = Vec::new();
-        {
-            let mut ss = subservices.borrow_mut();
-            while let Some(p) = ss.pop() {
-                v.push(p);
-            }
-        }
-
         match to_future(rx, start_listener(cfg2.clone(), etcdcfg, tx, tcp_sss_vec)).await {
             Ok(ctl) => subservices.borrow_mut().push(ctl),
             Err(_) => return Err(subservices),
