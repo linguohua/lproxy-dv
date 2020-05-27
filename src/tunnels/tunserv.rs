@@ -2,7 +2,7 @@ use super::Tunnel;
 use super::{LongLiveTM, LongLiveUD, UserDevice};
 use crate::tlsserver::WSStreamInfo;
 use futures::prelude::*;
-use log::{debug, info};
+use log::{debug, info, error};
 use tokio;
 
 pub fn serve_websocket(
@@ -66,28 +66,31 @@ pub fn serve_websocket(
 
     // `sink` is the stream of messages going out.
     // `stream` is the stream of incoming messages.
-    let (sink, stream) = ws_stream.split();
+    let (sink, mut stream) = ws_stream.split();
 
-    let receive_fut = stream.for_each(move |message| {
-        debug!("[tunserv]tunnel read a message");
-        match message {
-            Ok(m)=> {
-                // post to manager
-                let mut clone = t.borrow_mut();
-                clone.on_tunnel_msg(m, t.clone());
+    let receive_fut = async move {
+        while let Some(message) = stream.next().await {
+            debug!("[tunserv]tunnel read a message");
+            match message {
+                Ok(m)=> {
+                    // post to manager
+                    let mut clone = t.borrow_mut();
+                    clone.on_tunnel_msg(m, t.clone());
+                }
+                Err(e) => {
+                    error!("[tunserv]stream.next error:{}", e);
+                    break;
+                }
             }
-            _ => {}
         }
-
-        future::ready(())
-    });
+    };
 
     let rx = rx.map(|x|{Ok(x)});
     let send_fut = rx.forward(super::SinkEx::new(sink, t2.clone())); // TODO:
 
     // Wait for one future to complete.
     let select_fut = async move {
-        future::select(receive_fut, send_fut).await;
+        future::select(receive_fut.boxed_local(), send_fut).await;
         info!("[tunserv] both websocket futures completed");
         let mut rf = s2.borrow_mut();
         rf.on_tunnel_closed(t2.clone());

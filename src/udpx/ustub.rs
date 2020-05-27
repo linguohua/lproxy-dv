@@ -106,30 +106,30 @@ impl UStub {
 
         // send future
         let send_fut = rx.map(move |x|{Ok(x)}).forward(a_sink);
-        let receive_fut = a_stream
-        .take_until(tripwire)
-        .for_each(move |rr| {
-            match rr {
-                Ok((message, north_src_addr)) => {
-                    // ONLY those north ip in target set cand send packets to device
-                    if target_hashset.borrow().contains(&north_src_addr) {
-                        info!("[UStub]start_udp_socket recv, src_addr:{} dst_addr:{}, len:{}", north_src_addr, src_addr1, message.len());
-                        let rf = ll.borrow();
-                        // post to manager
-                        rf.on_udp_msg_south(message, &north_src_addr, &src_addr1, tunnel_tx.clone());
-                    } else {
-                        error!("[UStub]start_udp_socket recv, src_addr:{} dst_addr:{}, len:{}, not in target set", north_src_addr, src_addr1, message.len());
-                    }
-                },
-                Err(e) => error!("[UStub] start_udp_socket for_each failed:{}", e)
+        let receive_fut = async move {
+            let mut a_stream = a_stream.take_until(tripwire);
+            while let Some(rr) = a_stream.next().await {
+                match rr {
+                    Ok((message, north_src_addr)) => {
+                        // ONLY those north ip in target set cand send packets to device
+                        if target_hashset.borrow().contains(&north_src_addr) {
+                            info!("[UStub]start_udp_socket recv, src_addr:{} dst_addr:{}, len:{}", north_src_addr, src_addr1, message.len());
+                            let rf = ll.borrow();
+                            // post to manager
+                            rf.on_udp_msg_south(message, &north_src_addr, &src_addr1, tunnel_tx.clone());
+                        } else {
+                            error!("[UStub]start_udp_socket recv, src_addr:{} dst_addr:{}, len:{}, not in target set", north_src_addr, src_addr1, message.len());
+                            break;
+                        }
+                    },
+                    Err(e) => { error!("[UStub] start_udp_socket a_stream.next failed:{}", e); break;}
+                };
             };
-
-            future::ready(())
-        });
+        };
 
         // Wait for one future to complete.
         let select_fut = async move {
-            future::select(receive_fut, send_fut).await;
+            future::select(receive_fut.boxed_local(), send_fut).await;
             info!("[UStub] udp both future completed");
             let mut rf = ll2.borrow_mut();
             rf.on_ustub_closed(&src_addr2);

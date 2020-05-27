@@ -133,31 +133,30 @@ fn proxy_request_internal(
         }
     };
 
-    let receive_fut = stream.take_until(tripwire).for_each(move |message| {
-        let prev_error;
-        {
-            let mut tun_b = tl2.borrow_mut();
-            // post to manager
-            
-            match message {
-                Ok(m) => {
-                    if tun_b.on_request_msg(m, req_idx, req_tag) {
-                        prev_error = false;
-                    } else {
-                        prev_error = true;
+    let receive_fut = async move {
+        let mut stream = stream.take_until(tripwire);
+        while let Some(message) = stream.next().await {
+            let prev_error;
+            {
+                let mut tun_b = tl2.borrow_mut();
+                // post to manager
+                match message {
+                    Ok(m) => {
+                        if tun_b.on_request_msg(m, req_idx, req_tag) {
+                            prev_error = false;
+                        } else {
+                            prev_error = true;
+                        }
+                        FlowCtl::new(tl5.clone(), req_idx, req_tag, prev_error).map(|_|{}).await;
                     }
-                }
-                _ => {
-                    prev_error = false;
+                    Err(e) => {
+                        error!("[Proxy] stream.next() error:{}", e);
+                        break;
+                    }
                 }
             }
         }
 
-        FlowCtl::new(tl5.clone(), req_idx, req_tag, prev_error).map(|_|{})
-    });
-
-    let receive_fut = async move {
-        receive_fut.await;
         let mut tun_b = tl3.borrow_mut();
         // client(of request) send finished(FIN), indicate that
         // no more data to send

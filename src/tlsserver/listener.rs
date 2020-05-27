@@ -92,10 +92,11 @@ impl Listener {
         self.listener_trigger = Some(trigger);
 
         let server = async move {
-            tcp
+            let mut tcp =tcp
             .incoming()
-            .take_until(tripwire)
-            .for_each(move |tcps| {
+            .take_until(tripwire);
+
+            while let Some(tcps) = tcp.next().await {
                 match tcps {
                     Ok(tcpx) => {
                         let rawfd = tcpx.as_raw_fd();
@@ -135,10 +136,10 @@ impl Listener {
                     }
                     Err(e) => {
                         error!("[Server]server accept error {:?}", e);
+                        break;
                     }
                 }
-                future::ready(())
-            }).await;
+            }
 
             info!("[Server]accept future completed");
         };
