@@ -296,7 +296,12 @@ impl TunMgr {
                 u.borrow_mut()
                     .set_new_quota_per_second(notify.kb_per_second);
             }
-            None => {}
+            None => {
+                error!("[TunMgr] on_device_cfg_changed,device uuid:{} not found", uuid);
+                for (k, _) in self.device_map.iter() {
+                    error!("[TunMgr] on_device_cfg_changed, has device with uuid:{} ", k);
+                }
+            }
         }
     }
 }
