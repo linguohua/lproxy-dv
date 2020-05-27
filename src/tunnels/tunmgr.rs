@@ -289,6 +289,7 @@ impl TunMgr {
 
     pub fn on_device_cfg_changed(&mut self, notify: myrpc::CfgChangeNotify) {
         let uuid = &notify.uuid;
+        info!("[TunMgr] on_device_cfg_changed, uuid:{}", uuid);
         let ua = self.device_map.get(uuid);
         match ua {
             Some(u) => {

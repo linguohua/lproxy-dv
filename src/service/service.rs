@@ -246,10 +246,11 @@ impl Service {
             match ss.sstype {
                 SubServiceType::TunMgr => {
                     if ss.ctl_tx.is_some() {
+                        info!("[Service] send update cfg to tunmgr");
                         let cmd = SubServiceCtlCmd::CfgChangeNotify(notify.clone());
                         match ss.ctl_tx.as_ref().unwrap().send(cmd) {
                             Err(e) => {
-                                error!("[Service] send update etcdcfg to listener failed:{}", e);
+                                error!("[Service] send update cfg to listener failed:{}", e);
                             }
                             _ => {}
                         }
