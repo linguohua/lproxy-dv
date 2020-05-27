@@ -1,4 +1,5 @@
 
+use nix::unistd::close;
 use tokio::sync::mpsc::UnboundedSender;
 use std::net::SocketAddr;
 use std::io::Error;
@@ -7,7 +8,7 @@ use log::{error, info};
 use futures::prelude::*;
 use stream_cancel::{Trigger, Tripwire};
 use std::os::unix::io::RawFd;
-use nix::sys::socket::{shutdown, Shutdown};
+// use nix::sys::socket::{shutdown, Shutdown};
 use tokio::net::UdpSocket;
 use bytes::Bytes;
 use crate::lws::{WMessage};
@@ -68,7 +69,8 @@ impl UStub {
 
     fn close_rawfd(&self) {
         info!("[UStub]close_rawfd");
-        let r = shutdown(self.rawfd, Shutdown::Both);
+        //let r = shutdown(self.rawfd, Shutdown::Both);
+        let r = close(self.rawfd);
         match r {
             Err(e) => {
                 info!("[UStub]close_rawfd failed:{}", e);
