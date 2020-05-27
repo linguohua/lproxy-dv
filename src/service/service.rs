@@ -1,22 +1,22 @@
 use crate::config::{self, SERVICE_MONITOR_INTERVAL};
 use crate::myrpc;
-use tokio::sync::mpsc::UnboundedSender;
+use futures::prelude::*;
 use log::{debug, error, info};
 use std::fmt;
-use std::time::{Duration};
-use futures::prelude::*;
+use std::time::Duration;
 use stream_cancel::{Trigger, Tripwire};
+use tokio::sync::mpsc::UnboundedSender;
 const STATE_STOPPED: u8 = 0;
 const STATE_STARTING: u8 = 1;
 const STATE_RUNNING: u8 = 2;
 const STATE_STOPPING: u8 = 3;
 use super::{RpcServer, SubServiceCtl, SubServiceCtlCmd, SubServiceType};
 use fnv::FnvHashMap as HashMap;
+use futures::compat::Compat01As03;
 use grpcio::{ChannelBuilder, ChannelCredentialsBuilder, Environment};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
-use futures::compat::Compat01As03;
 
 pub type LongLiveS = Rc<RefCell<Service>>;
 
@@ -112,12 +112,12 @@ impl Service {
 
             let clone = s.clone();
             let fut = async move {
-                rx
-                .take_until(tripwire)
-                .for_each(move |ins| {
-                    Service::process_instruction(clone.clone(), ins);
-                    future::ready(())
-                }).await;
+                rx.take_until(tripwire)
+                    .for_each(move |ins| {
+                        Service::process_instruction(clone.clone(), ins);
+                        future::ready(())
+                    })
+                    .await;
 
                 info!("[Service] instruction rx future completed");
             };
@@ -147,7 +147,7 @@ impl Service {
         let s3 = s.clone();
         let rf = s.borrow();
         let server_cfg = rf.tuncfg.as_ref().unwrap().clone();
-        
+
         let fut = async move {
             let fut = config::EtcdConfig::load_from_etcd(server_cfg.as_ref());
             match fut.await {
@@ -161,7 +161,7 @@ impl Service {
                     for n in errors.iter() {
                         info!("[Service] do_load_cfg_from_etcd failed:{}", n);
                     }
-    
+
                     let seconds = 30;
                     info!(
                         "[Service] do_load_cfg_from_etcd failed, retry {} seconds later",
@@ -179,7 +179,7 @@ impl Service {
         let s3 = s.clone();
         let rf = s.borrow();
         let server_cfg = rf.tuncfg.as_ref().unwrap().clone();
-        
+
         let fut = async move {
             let fut = config::EtcdConfig::load_from_etcd(server_cfg.as_ref());
             match fut.await {
@@ -188,7 +188,7 @@ impl Service {
 
                     let mut rf = s2.borrow_mut();
                     rf.save_etcd_cfg(etcdcfg);
-    
+
                     rf.notify_listener_update_etcdcfg();
                     // re-monitor
                     rf.fire_instruction(Instruction::MonitorEtcdConfig);
@@ -197,7 +197,7 @@ impl Service {
                     for n in errors.iter() {
                         info!("[Service] do_update_cfg_from_etcd failed:{}", n);
                     }
-    
+
                     s3.borrow_mut()
                         .fire_instruction(Instruction::MonitorEtcdConfig);
                 }
@@ -291,7 +291,7 @@ impl Service {
         let s3 = s.clone();
         let rf = s.borrow();
         let server_cfg = rf.tuncfg.as_ref().unwrap().clone();
-        
+
         let fut = async move {
             let fut = config::EtcdConfig::monitor_etcd_cfg(server_cfg.as_ref());
             match fut.await {
@@ -340,9 +340,7 @@ impl Service {
         let fut = async move {
             let fut = config::etcd_update_instance_ttl(server_cfg.as_ref());
             match fut.await {
-                Ok(_) => {
-
-                }
+                Ok(_) => {}
                 Err(errors) => {
                     for n in errors.iter() {
                         info!("[Service] do_update_etcd_instance_ttl failed:{}", n);
@@ -370,29 +368,35 @@ impl Service {
             if flow_map.len() < 1 {
                 return;
             }
-    
+
             if rf.grpc_client.is_none() {
                 // reset to new hashmap
                 rf.flow_map = HashMap::default();
                 return;
             }
-    
+
             let bwu = report.mut_statistics();
-    
+
             for (uuid, bw) in flow_map.iter() {
                 let mut bu = myrpc::BandwidthUsage::new();
                 bu.set_uuid(uuid.to_string());
                 bu.set_recv_bytes(bw.recv);
                 bu.set_send_bytes(bw.send);
-    
+
                 bwu.push(bu);
             }
-    
+
             // reset to new hashmap
             rf.flow_map = HashMap::default();
         }
-     
-        match s.borrow_mut().grpc_client.as_ref().unwrap().report_async(&report) {
+
+        match s
+            .borrow_mut()
+            .grpc_client
+            .as_ref()
+            .unwrap()
+            .report_async(&report)
+        {
             Ok(async_receiver) => {
                 let fut = async move {
                     match Compat01As03::new(async_receiver).await {
@@ -539,11 +543,11 @@ impl Service {
                     while let Some(ctl) = vec_subservices.pop() {
                         s2.subservices.push(ctl);
                     }
-    
+
                     s2.state = STATE_RUNNING;
-    
+
                     s2.start_monitor_timer(clone.clone());
-    
+
                     if has_etcd {
                         // start to monitor etcd
                         s2.do_write_etcd_instance_data();
@@ -600,16 +604,17 @@ impl Service {
         // tokio timer, every 3 seconds
         let task = async move {
             tokio::time::interval(Duration::from_millis(SERVICE_MONITOR_INTERVAL))
-            .skip(1)
-            .take_until(tripwire)
-            .for_each(move |instant| {
-                debug!("[Service]monitor timer fire; instant={:?}", instant);
+                .skip(1)
+                .take_until(tripwire)
+                .for_each(move |instant| {
+                    debug!("[Service]monitor timer fire; instant={:?}", instant);
 
-                let rf = s2.borrow_mut();
-                rf.fire_instruction(Instruction::ServiceMonitor);
+                    let rf = s2.borrow_mut();
+                    rf.fire_instruction(Instruction::ServiceMonitor);
 
-                future::ready(())
-            }).await;
+                    future::ready(())
+                })
+                .await;
             info!("[Service] monitor timer future completed");
         };
         tokio::task::spawn_local(task);

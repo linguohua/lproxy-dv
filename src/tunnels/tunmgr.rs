@@ -4,6 +4,7 @@ use crate::myrpc;
 use crate::service::{BandwidthReport, BandwidthReportMap, Instruction, TxType};
 use failure::Error;
 use fnv::FnvHashMap as HashMap;
+use futures::prelude::*;
 use grpcio::{ChannelBuilder, ChannelCredentialsBuilder, Environment};
 use log::{debug, error, info};
 use std::cell::RefCell;
@@ -11,9 +12,8 @@ use std::net::SocketAddr;
 use std::rc::Rc;
 use std::result::Result;
 use std::sync::Arc;
-use std::time::{Duration};
+use std::time::Duration;
 use stream_cancel::{Trigger, Tripwire};
-use futures::prelude::*;
 
 type LongLive = Rc<RefCell<TunMgr>>;
 pub type LongLiveTM = LongLive;
@@ -300,7 +300,10 @@ impl TunMgr {
                     .set_new_quota_per_second(notify.kb_per_second);
             }
             None => {
-                error!("[TunMgr] on_device_cfg_changed,device uuid:{} not found", uuid);
+                error!(
+                    "[TunMgr] on_device_cfg_changed,device uuid:{} not found",
+                    uuid
+                );
             }
         }
     }

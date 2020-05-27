@@ -1,15 +1,18 @@
-use tokio::sync::mpsc::UnboundedSender;
-use std::net::SocketAddr;
-use std::cell::RefCell;
-use std::rc::Rc;
-use log::{error, info};
-use bytes::BytesMut;
-use super::{LongLiveC,UStub, Cache};
+use super::{Cache, LongLiveC, UStub};
 use crate::lws::{RMessage, WMessage};
-use bytes::Buf;
+use crate::tunnels::Cmd;
 use byte::*;
-use crate::tunnels::{Cmd};
-use std::net::{IpAddr::{self, V4, V6}, Ipv6Addr, Ipv4Addr};
+use bytes::Buf;
+use bytes::BytesMut;
+use log::{error, info};
+use std::cell::RefCell;
+use std::net::SocketAddr;
+use std::net::{
+    IpAddr::{self, V4, V6},
+    Ipv4Addr, Ipv6Addr,
+};
+use std::rc::Rc;
+use tokio::sync::mpsc::UnboundedSender;
 
 pub type LongLiveX = Rc<RefCell<UdpXMgr>>;
 
@@ -21,7 +24,7 @@ impl UdpXMgr {
     pub fn new() -> LongLiveX {
         info!("[UdpXMgr]new UdpXMgr");
         Rc::new(RefCell::new(UdpXMgr {
-            cache:  Cache::new(),
+            cache: Cache::new(),
         }))
     }
 
@@ -29,9 +32,15 @@ impl UdpXMgr {
     //     self.cache.borrow_mut().cleanup();
     // }
 
-    pub fn on_udp_msg_south(&self, msg: BytesMut, src_addr:&SocketAddr, dst_addr: &SocketAddr, tunnel_tx: UnboundedSender<WMessage>) {
+    pub fn on_udp_msg_south(
+        &self,
+        msg: BytesMut,
+        src_addr: &SocketAddr,
+        dst_addr: &SocketAddr,
+        tunnel_tx: UnboundedSender<WMessage>,
+    ) {
         // format packet, send to tx
-                // format udp forward packet
+        // format udp forward packet
         let mut content_size = msg.len();
         if src_addr.is_ipv4() {
             content_size += 7; // 1 + 2 + 4
@@ -64,12 +73,16 @@ impl UdpXMgr {
             Err(e) => {
                 error!("[UdpXMgr]on_udp_msg_south send error:{}", e);
             }
-            _ => {
-            }
+            _ => {}
         }
     }
 
-    pub fn on_udp_proxy_north(&mut self, lx:LongLiveX, tunnel_tx: UnboundedSender<WMessage>, msg: RMessage) {
+    pub fn on_udp_proxy_north(
+        &mut self,
+        lx: LongLiveX,
+        tunnel_tx: UnboundedSender<WMessage>,
+        msg: RMessage,
+    ) {
         let (src_addr, dst_addr, msgbody) = UdpXMgr::parse_udp_north_msg(msg);
         let cache: &mut Cache = &mut self.cache.borrow_mut();
         let mut stub = cache.get(&src_addr);
@@ -104,7 +117,13 @@ impl UdpXMgr {
         (src_addr, dst_addr, bb)
     }
 
-    fn build_ustub(&self, lx:LongLiveX, c: &mut Cache, tunnel_tx: UnboundedSender<WMessage>, src_addr: &SocketAddr) {
+    fn build_ustub(
+        &self,
+        lx: LongLiveX,
+        c: &mut Cache,
+        tunnel_tx: UnboundedSender<WMessage>,
+        src_addr: &SocketAddr,
+    ) {
         match UStub::new(src_addr, tunnel_tx, lx) {
             Ok(ustub) => {
                 let src_addr2: SocketAddr = *src_addr;
@@ -149,10 +168,11 @@ impl UdpXMgr {
         SocketAddr::from((ipbytes, port))
     }
 
-    fn write_socketaddr(bs: &mut [u8], offset: usize, addr : &SocketAddr) -> usize {
+    fn write_socketaddr(bs: &mut [u8], offset: usize, addr: &SocketAddr) -> usize {
         let mut new_offset = offset;
         let new_offset = &mut new_offset;
-        bs.write_with::<u16>(new_offset, addr.port() as u16, LE).unwrap(); // port
+        bs.write_with::<u16>(new_offset, addr.port() as u16, LE)
+            .unwrap(); // port
 
         match addr.ip() {
             V4(v4) => {

@@ -2,7 +2,7 @@ use super::Tunnel;
 use super::{LongLiveTM, LongLiveUD, UserDevice};
 use crate::tlsserver::WSStreamInfo;
 use futures::prelude::*;
-use log::{debug, info, error};
+use log::{debug, error, info};
 use tokio;
 
 pub fn serve_websocket(
@@ -42,16 +42,17 @@ pub fn serve_websocket(
     let t = {
         let mut rf = s.borrow_mut();
         Tunnel::new(
-        rf.next_tunnel_id(),
-        tx,
-        rawfd,
-        rf.dns_server_addr,
-        tunnel_cap,
-        tunnel_req_quota,
-        tun_quota,
-        device,
-        is_dns,
-    )};
+            rf.next_tunnel_id(),
+            tx,
+            rawfd,
+            rf.dns_server_addr,
+            tunnel_cap,
+            tunnel_req_quota,
+            tun_quota,
+            device,
+            is_dns,
+        )
+    };
 
     {
         let mut rf = s.borrow_mut();
@@ -60,7 +61,6 @@ pub fn serve_websocket(
             return;
         }
     }
-
 
     let t2 = t.clone();
 
@@ -72,7 +72,7 @@ pub fn serve_websocket(
         while let Some(message) = stream.next().await {
             debug!("[tunserv]tunnel read a message");
             match message {
-                Ok(m)=> {
+                Ok(m) => {
                     // post to manager
                     let mut clone = t.borrow_mut();
                     clone.on_tunnel_msg(m, t.clone());
@@ -85,7 +85,7 @@ pub fn serve_websocket(
         }
     };
 
-    let rx = rx.map(|x|{Ok(x)});
+    let rx = rx.map(|x| Ok(x));
     let send_fut = rx.forward(super::SinkEx::new(sink, t2.clone())); // TODO:
 
     // Wait for one future to complete.

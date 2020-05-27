@@ -7,11 +7,11 @@ mod token;
 mod tunnels;
 mod udpx;
 
-use log::{info};
+use log::info;
 use service::Service;
 use std::env;
-use tokio::signal::unix::{signal, SignalKind};
 use tokio::runtime;
+use tokio::signal::unix::{signal, SignalKind};
 
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
@@ -50,9 +50,10 @@ fn main() {
     };
 
     let mut basic_rt = runtime::Builder::new()
-    .basic_scheduler()
-    .enable_all()
-    .build().unwrap();
+        .basic_scheduler()
+        .enable_all()
+        .build()
+        .unwrap();
     // let handle = rt.handle();
     let local = tokio::task::LocalSet::new();
 
@@ -74,7 +75,7 @@ fn main() {
         // TODO: user_defined2, restart
         let sig = ss.recv().await;
         println!("got signal {:?}", sig);
-            // Service::stop
+        // Service::stop
         s.borrow_mut().stop();
     };
 

@@ -1,17 +1,16 @@
 use super::{LongLiveTun, Tunnel};
-use futures::ready;
 use futures::prelude::*;
+use futures::ready;
+use futures::task::{Context, Poll};
 use log::error;
+use std::io::Error;
 use std::net::SocketAddr;
-use std::time::{Duration};
+use std::pin::Pin;
+use std::time::Duration;
 use tokio::net::UdpSocket;
 use tokio::time::Delay;
-use std::pin::Pin;
-use futures::task::{Context, Poll};
-use std::io::Error;
 
 pub fn proxy_dns(_: &Tunnel, tl: LongLiveTun, msg_buf: Vec<u8>, port: u16, ip32: u32) {
-    
     let local_addr: SocketAddr = "0.0.0.0:0".parse().unwrap();
     let socket_udp = std::net::UdpSocket::bind(local_addr).unwrap();
     let mut udp = UdpSocket::from_std(socket_udp).unwrap();
@@ -70,11 +69,11 @@ impl<T> RecvDgram<T> {
 
 impl<T> Future for RecvDgram<T>
 where
-    T: AsMut<[u8]>+Unpin,
+    T: AsMut<[u8]> + Unpin,
 {
     type Output = std::result::Result<(UdpSocket, T, usize, SocketAddr), Error>;
 
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output>{
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let self_mut = self.get_mut();
         if self_mut.delay.is_elapsed() {
             return Poll::Ready(Err(std::io::Error::from(std::io::ErrorKind::TimedOut)));
@@ -98,6 +97,5 @@ where
                 return Poll::Ready(Err(e));
             }
         }
-
     }
 }

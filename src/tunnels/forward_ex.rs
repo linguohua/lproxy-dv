@@ -2,11 +2,11 @@ use super::Tunnel;
 use crate::lws::WMessage;
 use futures::sink::Sink;
 // use futures::{try_ready, Async, AsyncSink, Future, Poll};
-use std::cell::RefCell;
-use std::rc::Rc;
-use std::pin::Pin;
-use futures::task::{Context, Poll};
 use futures::ready;
+use futures::task::{Context, Poll};
+use std::cell::RefCell;
+use std::pin::Pin;
+use std::rc::Rc;
 
 /// Future for the `Stream::forward` combinator, which sends a stream of values
 /// to a sink and then waits until the sink has fully flushed those values.
@@ -22,12 +22,11 @@ impl<T> SinkEx<T>
 where
     T: Sink<WMessage>,
 {
-    pub fn new(sink: T, tun: Rc<RefCell<Tunnel>>) -> Self
-    {
+    pub fn new(sink: T, tun: Rc<RefCell<Tunnel>>) -> Self {
         let has_flowctl = tun.borrow().has_flowctl;
         SinkEx {
             sink,
-            bytes_consume:0,
+            bytes_consume: 0,
             tun,
             has_flowctl,
         }
@@ -36,7 +35,7 @@ where
 
 impl<T> Sink<WMessage> for SinkEx<T>
 where
-    T: Sink<WMessage>+Unpin
+    T: Sink<WMessage> + Unpin,
 {
     type Error = T::Error;
 
@@ -70,7 +69,7 @@ where
 
     fn start_send(self: Pin<&mut Self>, item: WMessage) -> Result<(), Self::Error> {
         let self_mut = self.get_mut();
-        
+
         self_mut.bytes_consume = item.content_length as u64;
         let mut io = &mut self_mut.sink;
         let pin_io = Pin::new(&mut io);

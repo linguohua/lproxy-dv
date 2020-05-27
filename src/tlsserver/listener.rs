@@ -4,20 +4,20 @@ use crate::service::SubServiceCtlCmd;
 use crate::service::TunMgrStub;
 use crate::tunnels::find_str_from_query_string;
 use failure::Error;
+use futures::prelude::*;
 use log::{error, info};
 use native_tls::Identity;
 use std::cell::RefCell;
 use std::fs::File;
 use std::hash::{Hash, Hasher};
+use std::io::Read;
 use std::os::unix::io::AsRawFd;
 use std::os::unix::io::RawFd;
 use std::rc::Rc;
 use std::result::Result;
 use stream_cancel::{Trigger, Tripwire};
-use futures::prelude::*;
-use tokio::net::{TcpListener,TcpStream};
+use tokio::net::{TcpListener, TcpStream};
 use tokio_tls::TlsStream;
-use std::io::Read;
 
 type WSStream = LwsFramed<TlsStream<TcpStream>>;
 type LongLive = Rc<RefCell<Listener>>;
@@ -92,9 +92,7 @@ impl Listener {
         self.listener_trigger = Some(trigger);
 
         let server = async move {
-            let mut tcp =tcp
-            .incoming()
-            .take_until(tripwire);
+            let mut tcp = tcp.incoming().take_until(tripwire);
 
             while let Some(tcps) = tcp.next().await {
                 match tcps {
@@ -102,30 +100,33 @@ impl Listener {
                         let rawfd = tcpx.as_raw_fd();
                         let ll2 = ll.clone();
                         let tls_acceptor = tls_acceptor.clone();
-    
+
                         // Accept the TLS connection.
                         let tls_accept = async move {
                             match tls_acceptor.borrow().accept(tcpx).await {
-                                Ok(tls) => {
-                                    match lws::do_server_hanshake(tls).await {
-                                        Ok((lsocket, path)) => {
-                                            if path.is_some() {
-                                                let p = path.unwrap();
-                                                info!("[Server]path:{}", p);
-                                                let lstream = lws::LwsFramed::new(lsocket, None);
-                                                let s = ll2.clone();
-                                                let mut s = s.borrow_mut();
-                                                let dns = find_str_from_query_string(&p, "dns=");
-                                                if p.contains(&s.tun_path) {
-                                                    s.on_accept_proxy_websocket(rawfd, lstream, dns == "1", p);
-                                                }
+                                Ok(tls) => match lws::do_server_hanshake(tls).await {
+                                    Ok((lsocket, path)) => {
+                                        if path.is_some() {
+                                            let p = path.unwrap();
+                                            info!("[Server]path:{}", p);
+                                            let lstream = lws::LwsFramed::new(lsocket, None);
+                                            let s = ll2.clone();
+                                            let mut s = s.borrow_mut();
+                                            let dns = find_str_from_query_string(&p, "dns=");
+                                            if p.contains(&s.tun_path) {
+                                                s.on_accept_proxy_websocket(
+                                                    rawfd,
+                                                    lstream,
+                                                    dns == "1",
+                                                    p,
+                                                );
                                             }
                                         }
-                                        Err(e) => {
-                                            error!("[Server]TLS do_server_hanshake error:{}", e);
-                                        }
                                     }
-                                }
+                                    Err(e) => {
+                                        error!("[Server]TLS do_server_hanshake error:{}", e);
+                                    }
+                                },
                                 Err(e) => {
                                     error!("[Server]TLS Accept error:{}", e);
                                 }

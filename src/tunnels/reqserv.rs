@@ -1,17 +1,17 @@
 use super::{HostInfo, LongLiveTun, Tunnel};
 use crate::lws::{TcpFramed, WMessage};
 use futures::prelude::*;
-use tokio::sync::mpsc::{self, UnboundedReceiver};
+use futures::task::{Context, Poll};
 use log::{error, info};
 use nix::sys::socket::{shutdown, Shutdown};
+use std::io::Error;
 use std::net::SocketAddr;
 use std::os::unix::io::AsRawFd;
-use std::time::Duration;
-use stream_cancel::{Tripwire};
-use tokio::net::TcpStream;
-use std::io::Error;
 use std::pin::Pin;
-use futures::task::{Context, Poll};
+use std::time::Duration;
+use stream_cancel::Tripwire;
+use tokio::net::TcpStream;
+use tokio::sync::mpsc::{self, UnboundedReceiver};
 
 pub fn proxy_request(
     tun: &mut Tunnel,
@@ -36,17 +36,17 @@ pub fn proxy_request(
 
             let tl0 = tl.clone();
             let fut = async move {
-                match tokio::time::timeout(Duration::from_secs(5), TcpStream::connect(&sockaddr)).await {
-                    Ok(socket2) => {
-                        match socket2 {
-                            Ok(socket) => {
-                                proxy_request_internal(socket, rx, tripwire, tl, req_idx, req_tag);
-                            }
-                            Err(e) => {
-                                error!("[Proxy] tcp connect failed:{}", e);
-                                let mut tun = tl0.borrow_mut();
-                                tun.on_request_connect_error(req_idx, req_tag);
-                            }
+                match tokio::time::timeout(Duration::from_secs(5), TcpStream::connect(&sockaddr))
+                    .await
+                {
+                    Ok(socket2) => match socket2 {
+                        Ok(socket) => {
+                            proxy_request_internal(socket, rx, tripwire, tl, req_idx, req_tag);
+                        }
+                        Err(e) => {
+                            error!("[Proxy] tcp connect failed:{}", e);
+                            let mut tun = tl0.borrow_mut();
+                            tun.on_request_connect_error(req_idx, req_tag);
                         }
                     },
                     Err(e) => {
@@ -62,23 +62,22 @@ pub fn proxy_request(
         HostInfo::Domain(domain) => {
             info!("[Proxy] proxy request to domain:{}:{}", domain, port);
             let tl0 = tl.clone();
-            
+
             let fut = async move {
                 let h = &domain[..];
-                match tokio::time::timeout(Duration::from_secs(5),TcpStream::connect((h, port))).await {
-                    Ok(socket2) => {
-                        match socket2 {
-                            Ok(socket) => {
-                                proxy_request_internal(socket, rx, tripwire, tl, req_idx, req_tag);
-                            }
-                            Err(e) => {
-                                error!("[Proxy] tcp connect failed:{}", e);
-                                let mut tun = tl0.borrow_mut();
-                                tun.on_request_connect_error(req_idx, req_tag);
-                            }
+                match tokio::time::timeout(Duration::from_secs(5), TcpStream::connect((h, port)))
+                    .await
+                {
+                    Ok(socket2) => match socket2 {
+                        Ok(socket) => {
+                            proxy_request_internal(socket, rx, tripwire, tl, req_idx, req_tag);
                         }
-                        
-                    }
+                        Err(e) => {
+                            error!("[Proxy] tcp connect failed:{}", e);
+                            let mut tun = tl0.borrow_mut();
+                            tun.on_request_connect_error(req_idx, req_tag);
+                        }
+                    },
                     Err(e) => {
                         error!("[Proxy] tcp connect timeout:{}", e);
                         let mut tun = tl0.borrow_mut();
@@ -119,13 +118,13 @@ fn proxy_request_internal(
 
     // send future
     let send_fut = async move {
-        match rx.map(|x|{Ok(x)}).forward(sink).await {
+        match rx.map(|x| Ok(x)).forward(sink).await {
             Err(e) => {
                 error!("[Proxy]send_fut failed:{}", e);
             }
             _ => {}
         }
-        
+
         info!("[Proxy]send_fut end, index:{}", req_idx);
         // shutdown write direction
         if let Err(e) = shutdown(rawfd, Shutdown::Write) {
@@ -136,24 +135,26 @@ fn proxy_request_internal(
     let receive_fut = async move {
         let mut stream = stream.take_until(tripwire);
         while let Some(message) = stream.next().await {
-                // post to manager
-                match message {
-                    Ok(m) => {
-                        let prev_error;
-                        {
-                            let mut tun_b = tl2.borrow_mut();
-                            if tun_b.on_request_msg(m, req_idx, req_tag) {
-                                prev_error = false;
-                            } else {
-                                prev_error = true;
-                            }
+            // post to manager
+            match message {
+                Ok(m) => {
+                    let prev_error;
+                    {
+                        let mut tun_b = tl2.borrow_mut();
+                        if tun_b.on_request_msg(m, req_idx, req_tag) {
+                            prev_error = false;
+                        } else {
+                            prev_error = true;
                         }
-
-                        FlowCtl::new(tl5.clone(), req_idx, req_tag, prev_error).map(|_|{}).await;
                     }
-                    Err(e) => {
-                        error!("[Proxy] stream.next() error:{}", e);
-                        break;
+
+                    FlowCtl::new(tl5.clone(), req_idx, req_tag, prev_error)
+                        .map(|_| {})
+                        .await;
+                }
+                Err(e) => {
+                    error!("[Proxy] stream.next() error:{}", e);
+                    break;
                 }
             }
         }
@@ -195,16 +196,17 @@ impl FlowCtl {
 impl Future for FlowCtl {
     type Output = std::result::Result<(), Error>;
 
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output>{
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let self_mut = self.get_mut();
         if self_mut.prev_error {
             return Poll::Ready(Err(std::io::Error::from(std::io::ErrorKind::NotConnected)));
         }
 
-        let quota_ready = self_mut
-            .tl
-            .borrow_mut()
-            .flowctl_request_quota_poll(self_mut.req_idx, self_mut.req_tag, cx.waker().clone());
+        let quota_ready = self_mut.tl.borrow_mut().flowctl_request_quota_poll(
+            self_mut.req_idx,
+            self_mut.req_tag,
+            cx.waker().clone(),
+        );
         match quota_ready {
             Err(_) => Poll::Ready(Err(std::io::Error::from(std::io::ErrorKind::NotConnected))),
             Ok(t) => {

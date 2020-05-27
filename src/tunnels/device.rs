@@ -1,14 +1,14 @@
 use crate::config::QUOTA_RESET_INTERVAL;
+use crate::lws::{RMessage, WMessage};
 use crate::myrpc;
 use crate::tlsserver::WSStreamInfo;
+use crate::udpx::{LongLiveX, UdpXMgr};
+use futures::compat::Compat01As03;
 use futures::task::Waker;
-use log::{info,error};
+use log::{error, info};
 use std::cell::RefCell;
 use std::rc::Rc;
-use futures::compat::Compat01As03;
-use crate::lws::{RMessage, WMessage};
 use tokio::sync::mpsc::UnboundedSender;
-use crate::udpx::{UdpXMgr, LongLiveX};
 
 pub type LongLiveUD = Rc<RefCell<UserDevice>>;
 
@@ -23,7 +23,7 @@ pub struct UserDevice {
     tm: super::LongLiveTM,
 
     pub my_tunnels_ids: Vec<usize>,
-    udpx_mgr : LongLiveX,
+    udpx_mgr: LongLiveX,
 }
 
 impl UserDevice {
@@ -75,7 +75,11 @@ impl UserDevice {
         self.quota_remain
     }
 
-    pub fn poll_tunnel_quota_with(&mut self, bytes_cosume: usize, waker : Waker) -> Result<bool, ()> {
+    pub fn poll_tunnel_quota_with(
+        &mut self,
+        bytes_cosume: usize,
+        waker: Waker,
+    ) -> Result<bool, ()> {
         let remain = self.consume(bytes_cosume);
 
         if remain == 0 {
@@ -91,12 +95,18 @@ impl UserDevice {
     }
 
     pub fn set_need_pull(&mut self, need_pull: bool) {
-        info!("[UserDevice]set_need_pull, id:{}, need_pull:{}",self.uuid, need_pull);
+        info!(
+            "[UserDevice]set_need_pull, id:{}, need_pull:{}",
+            self.uuid, need_pull
+        );
         self.need_cfg_pull = need_pull;
     }
 
     pub fn set_new_quota_per_second(&mut self, bandwidth_limit_kbs: u64) {
-        info!("[UserDevice]set_new_quota_per_second, id:{}, bandwidth_limit_kbs:{}",self.uuid, bandwidth_limit_kbs);
+        info!(
+            "[UserDevice]set_new_quota_per_second, id:{}, bandwidth_limit_kbs:{}",
+            self.uuid, bandwidth_limit_kbs
+        );
         self.quota_per_second = (bandwidth_limit_kbs * 1000) as usize;
     }
 
@@ -119,7 +129,7 @@ impl UserDevice {
     }
 
     fn start_pull_cfg(&mut self, ll: LongLiveUD) {
-        info!("[UserDevice]start_pull_cfg, id:{}",self.uuid);
+        info!("[UserDevice]start_pull_cfg, id:{}", self.uuid);
         if self.is_in_pulling {
             return;
         }
@@ -147,11 +157,11 @@ impl UserDevice {
                                     rsp.code
                                 );
                             }
-    
+
                             let mut rf = ll1.borrow_mut();
                             rf.is_in_pulling = false;
                             rf.on_cfg_pull_completed(rsp, ll1.clone());
-                        },
+                        }
                         Err(e) => {
                             error!("[UserDevice]start_pull_cfg, grpc error:{}", e);
                             let mut rf = ll2.borrow_mut();
@@ -164,7 +174,7 @@ impl UserDevice {
                                 }
                                 _ => {}
                             }
-    
+
                             rf.is_in_pulling = false;
                             rf.on_cfg_pull_failed();
                         }
@@ -181,7 +191,7 @@ impl UserDevice {
     }
 
     fn on_cfg_pull_completed(&mut self, rsp: myrpc::CfgPullResult, ll: LongLiveUD) {
-        info!("[UserDevice]on_cfg_pull_completed, id:{}",self.uuid);
+        info!("[UserDevice]on_cfg_pull_completed, id:{}", self.uuid);
         if rsp.code != 0 {
             error!(
                 "[UserDevice]on_cfg_pull_completed, uuid:{}, hub server reject, code:{}",
@@ -213,7 +223,7 @@ impl UserDevice {
     }
 
     fn on_cfg_pull_failed(&mut self) {
-        info!("[UserDevice]on_cfg_pull_failed, id:{}",self.uuid);
+        info!("[UserDevice]on_cfg_pull_failed, id:{}", self.uuid);
         self.wait_tunnels.clear();
     }
 
@@ -228,6 +238,8 @@ impl UserDevice {
     pub fn on_udpx_north(&mut self, tunnel_tx: UnboundedSender<WMessage>, msg: RMessage) {
         // on_udp_proxy_north(&mut self, lx:LongLiveX, tunnel_tx: UnboundedSender<WMessage>, mut msg: RMessage)
         let udpx_mgr = &self.udpx_mgr;
-        udpx_mgr.borrow_mut().on_udp_proxy_north(udpx_mgr.clone(), tunnel_tx, msg);
+        udpx_mgr
+            .borrow_mut()
+            .on_udp_proxy_north(udpx_mgr.clone(), tunnel_tx, msg);
     }
 }

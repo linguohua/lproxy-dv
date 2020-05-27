@@ -1,21 +1,20 @@
-
-use nix::unistd::close;
-use tokio::sync::mpsc::UnboundedSender;
-use std::net::SocketAddr;
-use std::io::Error;
-use std::result::Result;
-use log::{error, info};
 use futures::prelude::*;
-use stream_cancel::{Trigger, Tripwire};
+use log::{error, info};
+use nix::unistd::close;
+use std::io::Error;
+use std::net::SocketAddr;
 use std::os::unix::io::RawFd;
+use std::result::Result;
+use stream_cancel::{Trigger, Tripwire};
+use tokio::sync::mpsc::UnboundedSender;
 // use nix::sys::socket::{shutdown, Shutdown};
-use tokio::net::UdpSocket;
+use crate::lws::WMessage;
 use bytes::Bytes;
-use crate::lws::{WMessage};
-use std::os::unix::io::AsRawFd;
 use fnv::FnvHashSet as HashSet;
 use std::cell::RefCell;
+use std::os::unix::io::AsRawFd;
 use std::rc::Rc;
+use tokio::net::UdpSocket;
 
 type TxType = UnboundedSender<(bytes::Bytes, std::net::SocketAddr)>;
 type TargetSet = Rc<RefCell<HashSet<SocketAddr>>>;
@@ -29,10 +28,14 @@ pub struct UStub {
 }
 
 impl UStub {
-    pub fn new(src_addr: &SocketAddr, tunnel_tx: UnboundedSender<WMessage>, ll: super::LongLiveX) -> Result<Self, Error> {
+    pub fn new(
+        src_addr: &SocketAddr,
+        tunnel_tx: UnboundedSender<WMessage>,
+        ll: super::LongLiveX,
+    ) -> Result<Self, Error> {
         let mut stub = UStub {
             rawfd: 0,
-            tx: None, 
+            tx: None,
             tigger: None,
             target_set: Rc::new(RefCell::new(HashSet::default())),
             src_addr: *src_addr,
@@ -49,9 +52,14 @@ impl UStub {
             return;
         }
 
-        info!("[UStub]on_udp_proxy_north, src_addr:{} dst_addr:{}, len:{}", self.src_addr, dst_addr, msg.len());
+        info!(
+            "[UStub]on_udp_proxy_north, src_addr:{} dst_addr:{}, len:{}",
+            self.src_addr,
+            dst_addr,
+            msg.len()
+        );
         self.target_set.borrow_mut().insert(dst_addr);
-        match self.tx.as_ref().unwrap().send((msg, dst_addr)){
+        match self.tx.as_ref().unwrap().send((msg, dst_addr)) {
             Err(e) => {
                 error!("[UStub]on_udp_proxy_north, send tx msg failed:{}", e);
             }
@@ -80,18 +88,22 @@ impl UStub {
     }
 
     fn set_tx(&mut self, tx2: TxType, trigger: Trigger) {
-        self.tx = Some(tx2); 
+        self.tx = Some(tx2);
         self.tigger = Some(trigger);
     }
 
-    fn start_udp_socket(&mut self, src_addr: &SocketAddr,
-        tunnel_tx: UnboundedSender<WMessage>, ll: super::LongLiveX) -> std::result::Result<(), Error> {
+    fn start_udp_socket(
+        &mut self,
+        src_addr: &SocketAddr,
+        tunnel_tx: UnboundedSender<WMessage>,
+        ll: super::LongLiveX,
+    ) -> std::result::Result<(), Error> {
         // let sockudp = std::net::UdpSocket::new();
         let local_addr: SocketAddr = "0.0.0.0:0".parse().unwrap();
         let socket_udp = std::net::UdpSocket::bind(local_addr)?;
         let rawfd = socket_udp.as_raw_fd();
         let a = UdpSocket::from_std(socket_udp)?;
-        
+
         let udp_framed = tokio_util::udp::UdpFramed::new(a, tokio_util::codec::BytesCodec::new());
         let (a_sink, a_stream) = udp_framed.split();
 
@@ -107,7 +119,7 @@ impl UStub {
         let target_hashset = self.target_set.clone();
 
         // send future
-        let send_fut = rx.map(move |x|{Ok(x)}).forward(a_sink);
+        let send_fut = rx.map(move |x| Ok(x)).forward(a_sink);
         let receive_fut = async move {
             let mut a_stream = a_stream.take_until(tripwire);
             while let Some(rr) = a_stream.next().await {
@@ -115,18 +127,31 @@ impl UStub {
                     Ok((message, north_src_addr)) => {
                         // ONLY those north ip in target set cand send packets to device
                         if target_hashset.borrow().contains(&north_src_addr) {
-                            info!("[UStub]start_udp_socket recv, src_addr:{} dst_addr:{}, len:{}", north_src_addr, src_addr1, message.len());
+                            info!(
+                                "[UStub]start_udp_socket recv, src_addr:{} dst_addr:{}, len:{}",
+                                north_src_addr,
+                                src_addr1,
+                                message.len()
+                            );
                             let rf = ll.borrow();
                             // post to manager
-                            rf.on_udp_msg_south(message, &north_src_addr, &src_addr1, tunnel_tx.clone());
+                            rf.on_udp_msg_south(
+                                message,
+                                &north_src_addr,
+                                &src_addr1,
+                                tunnel_tx.clone(),
+                            );
                         } else {
                             error!("[UStub]start_udp_socket recv, src_addr:{} dst_addr:{}, len:{}, not in target set", north_src_addr, src_addr1, message.len());
                             break;
                         }
-                    },
-                    Err(e) => { error!("[UStub] start_udp_socket a_stream.next failed:{}", e); break;}
+                    }
+                    Err(e) => {
+                        error!("[UStub] start_udp_socket a_stream.next failed:{}", e);
+                        break;
+                    }
                 };
-            };
+            }
         };
 
         // Wait for one future to complete.

@@ -1,11 +1,11 @@
 use bytes::{BufMut, BytesMut};
 use futures::prelude::*;
 use futures::ready;
+use futures::task::{Context, Poll};
 use sha1::{Digest, Sha1};
 use std::io::Error;
-use tokio::io::{AsyncRead, AsyncWrite};
 use std::pin::Pin;
-use futures::task::{Context, Poll};
+use tokio::io::{AsyncRead, AsyncWrite};
 
 pub enum SHState {
     ReadingHeader,
@@ -107,7 +107,7 @@ where
 {
     type Output = std::result::Result<(T, Option<String>), Error>;
 
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output>{
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let self_mut = self.get_mut();
         loop {
             match self_mut.state {

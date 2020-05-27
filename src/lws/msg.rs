@@ -1,6 +1,6 @@
-use core::mem::MaybeUninit;
 use byte::*;
 use bytes::{Buf, BufMut};
+use core::mem::MaybeUninit;
 use std::slice;
 
 pub const DEFAULT_CAP: usize = 8096;

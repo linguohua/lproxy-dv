@@ -1,7 +1,7 @@
 use super::{Cmd, LongLiveUD, Reqq, THeader, THEADER_SIZE};
 use crate::lws::{RMessage, TMessage, WMessage};
 use byte::*;
-use tokio::sync::mpsc::UnboundedSender;
+use futures::task::Waker;
 use log::{error, info};
 use nix::sys::socket::{shutdown, IpAddr, Shutdown};
 use std::cell::RefCell;
@@ -11,7 +11,7 @@ use std::rc::Rc;
 use std::result::Result;
 use std::time::Instant;
 use stream_cancel::Trigger;
-use futures::task::Waker;
+use tokio::sync::mpsc::UnboundedSender;
 
 pub type LongLiveTun = Rc<RefCell<Tunnel>>;
 
@@ -123,7 +123,7 @@ impl Tunnel {
             }
             Cmd::UdpX => {
                 self.on_udpx_north(msg);
-            },
+            }
             _ => {
                 if self.is_for_dns {
                     self.on_tunnel_dns_msg(msg, tl);
@@ -570,7 +570,12 @@ impl Tunnel {
         }
     }
 
-    pub fn flowctl_request_quota_poll(&mut self, req_idx: u16, req_tag: u16, wak: Waker) -> Result<bool, ()> {
+    pub fn flowctl_request_quota_poll(
+        &mut self,
+        req_idx: u16,
+        req_tag: u16,
+        wak: Waker,
+    ) -> Result<bool, ()> {
         if !self.check_req_valid(req_idx, req_tag) {
             // just resume the task
             info!("[Tunnel]{} flowctl_quota_poll invalid req", self.tunnel_id);

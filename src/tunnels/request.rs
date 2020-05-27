@@ -1,9 +1,9 @@
 use crate::lws::WMessage;
-use tokio::sync::mpsc::UnboundedSender;
+use futures::task::Waker;
 use std::fmt;
 use std::os::unix::io::RawFd;
 use stream_cancel::Trigger;
-use futures::task::Waker;
+use tokio::sync::mpsc::UnboundedSender;
 
 pub struct Request {
     pub index: u16,

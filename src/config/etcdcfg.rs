@@ -2,8 +2,8 @@ use super::{ServerCfg, SERVICE_MONITOR_INTERVAL};
 use etcd::kv::{self, KeyValueInfo, WatchError, WatchOptions};
 use etcd::Error;
 use etcd::{Client, Response};
-use std::fmt;
 use futures::compat::Compat01As03;
+use std::fmt;
 
 const ETCD_CFG_ROOT: &str = "/dv/global/";
 const ETCD_CFG_TUN_PATH: &str = "/dv/global/tun_path";
@@ -112,7 +112,12 @@ pub async fn etcd_write_instance_data(
 
     Compat01As03::new(kv::set(&client, &key_address, &key_value, None)).await?;
     Compat01As03::new(kv::set(&client, &key_address2, &key_value2, None)).await?;
-    Compat01As03::new(kv::update_dir(&client, &dir, Some(SERVICE_MONITOR_INTERVAL * 2))).await?;
+    Compat01As03::new(kv::update_dir(
+        &client,
+        &dir,
+        Some(SERVICE_MONITOR_INTERVAL * 2),
+    ))
+    .await?;
 
     Ok(())
 }
@@ -133,7 +138,12 @@ pub async fn etcd_update_instance_ttl(
 
     let uuid = &server_cfg.uuid;
     let dir = format!("{}/{}", ETCD_CFG_DV_INSTANCE_ROOT, uuid);
-    Compat01As03::new(kv::update_dir(&client, &dir, Some(SERVICE_MONITOR_INTERVAL * 2))).await?;
+    Compat01As03::new(kv::update_dir(
+        &client,
+        &dir,
+        Some(SERVICE_MONITOR_INTERVAL * 2),
+    ))
+    .await?;
 
     Ok(())
 }

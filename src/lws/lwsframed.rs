@@ -1,13 +1,13 @@
-use futures::stream::FusedStream;
 use super::{RMessage, WMessage};
 use bytes::BufMut;
 use futures::prelude::*;
 use futures::ready;
+use futures::stream::FusedStream;
+use futures::task::{Context, Poll};
 use std::collections::VecDeque;
 use std::io::Error;
-use tokio::io::{AsyncRead, AsyncWrite};
 use std::pin::Pin;
-use futures::task::{Context, Poll};
+use tokio::io::{AsyncRead, AsyncWrite};
 
 pub struct LwsFramed<T> {
     io: T,
@@ -15,11 +15,12 @@ pub struct LwsFramed<T> {
     writing: Option<WMessage>,
     write_queue: VecDeque<WMessage>,
     tail: Option<Vec<u8>>,
-    has_finished:bool,
+    has_finished: bool,
 }
 
-impl<T> LwsFramed<T> 
-where T: AsyncWrite+Unpin,
+impl<T> LwsFramed<T>
+where
+    T: AsyncWrite + Unpin,
 {
     pub fn new(io: T, tail: Option<Vec<u8>>) -> Self {
         LwsFramed {
@@ -28,7 +29,7 @@ where T: AsyncWrite+Unpin,
             writing: None,
             tail,
             write_queue: VecDeque::with_capacity(128),
-            has_finished:false,
+            has_finished: false,
         }
     }
 
@@ -44,7 +45,7 @@ where T: AsyncWrite+Unpin,
 
                 let writing = self.writing.as_mut().unwrap();
                 let pin_io = Pin::new(&mut self.io);
-                ready!(pin_io.poll_write_buf(cx,writing))?;
+                ready!(pin_io.poll_write_buf(cx, writing))?;
 
                 if writing.is_completed() {
                     self.writing = None;
@@ -75,14 +76,11 @@ fn read_from_tail<B: BufMut>(vec: &mut Vec<u8>, bf: &mut B) -> Vec<u8> {
 
 impl<T> Stream for LwsFramed<T>
 where
-    T: AsyncRead+Unpin,
+    T: AsyncRead + Unpin,
 {
-    type Item = std::result::Result<RMessage,Error>;
+    type Item = std::result::Result<RMessage, Error>;
 
-    fn poll_next(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<Option<Self::Item>> {
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let self_mut = self.get_mut();
         loop {
             //self.inner.poll()
@@ -109,7 +107,7 @@ where
                 // read from io
                 let mut io = &mut self_mut.io;
                 let pin_io = Pin::new(&mut io);
-                match ready!(pin_io.poll_read_buf(cx,msg)) {
+                match ready!(pin_io.poll_read_buf(cx, msg)) {
                     Ok(n) => {
                         if n <= 0 {
                             log::info!("LwsFramed poll_read_buf n <= 0, set finished:{}", n);
@@ -136,17 +134,20 @@ where
 
 impl<T> FusedStream for LwsFramed<T>
 where
-    T: AsyncRead+Unpin,
+    T: AsyncRead + Unpin,
 {
     fn is_terminated(&self) -> bool {
-        log::info!("LwsFramed FusedStream is_terminated call:{}", self.has_finished);
+        log::info!(
+            "LwsFramed FusedStream is_terminated call:{}",
+            self.has_finished
+        );
         self.has_finished
     }
 }
 
 impl<T> Sink<WMessage> for LwsFramed<T>
 where
-    T: AsyncWrite+Unpin,
+    T: AsyncWrite + Unpin,
 {
     type Error = Error;
 
@@ -159,16 +160,16 @@ where
                         return Poll::Ready(Ok(()));
                     }
 
-                    return Poll::Pending
+                    return Poll::Pending;
                 }
-                _=>{}
+                _ => {}
             }
         }
 
         Poll::Ready(Ok(()))
     }
 
-    fn start_send(self: Pin<&mut Self>, item: WMessage) -> Result<(), Self::Error> { 
+    fn start_send(self: Pin<&mut Self>, item: WMessage) -> Result<(), Self::Error> {
         let self_mut = self.get_mut();
         self_mut.write_queue.push_back(item);
         Ok(())
