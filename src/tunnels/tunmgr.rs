@@ -259,6 +259,7 @@ impl TunMgr {
                 return a.clone();
             }
             None => {
+                info!("[TunMgr] allocate_device new device, uuid:{}", uuid);
                 let v = super::UserDevice::new(uuid.to_string(), self.has_grpc(), ll);
                 self.device_map.insert(uuid.to_string(), v.clone());
 
@@ -271,6 +272,7 @@ impl TunMgr {
         let ua = self.device_map.remove(&uuid);
         match ua {
             Some(u) => {
+                info!("[TunMgr] on_kickout_uuid device, uuid:{}", uuid);
                 let u = u.borrow();
                 let tunnel_ids = &u.my_tunnels_ids.to_vec(); // create a new copy
                 for n in tunnel_ids.iter() {
@@ -289,18 +291,16 @@ impl TunMgr {
 
     pub fn on_device_cfg_changed(&mut self, notify: myrpc::CfgChangeNotify) {
         let uuid = &notify.uuid;
-        info!("[TunMgr] on_device_cfg_changed, uuid:{}", uuid);
+
         let ua = self.device_map.get(uuid);
         match ua {
             Some(u) => {
+                info!("[TunMgr] on_device_cfg_changed, uuid:{}", uuid);
                 u.borrow_mut()
                     .set_new_quota_per_second(notify.kb_per_second);
             }
             None => {
                 error!("[TunMgr] on_device_cfg_changed,device uuid:{} not found", uuid);
-                for (k, _) in self.device_map.iter() {
-                    error!("[TunMgr] on_device_cfg_changed, has device with uuid:{} ", k);
-                }
             }
         }
     }
