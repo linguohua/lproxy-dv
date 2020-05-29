@@ -18,14 +18,14 @@
 #![allow(unused_imports)]
 #![allow(unused_results)]
 
-const METHOD_DV_EXPORT_KICKOUT_UUID: ::grpcio::Method<super::dv::Kickout, super::dv::Empty> = ::grpcio::Method {
+const METHOD_DV_EXPORT_KICKOUT_UUID: ::grpcio::Method<super::dv::Kickout, super::dv::Result> = ::grpcio::Method {
     ty: ::grpcio::MethodType::Unary,
     name: "/DvExport/KickoutUuid",
     req_mar: ::grpcio::Marshaller { ser: ::grpcio::pb_ser, de: ::grpcio::pb_de },
     resp_mar: ::grpcio::Marshaller { ser: ::grpcio::pb_ser, de: ::grpcio::pb_de },
 };
 
-const METHOD_DV_EXPORT_UUID_CFG_CHANGED: ::grpcio::Method<super::dv::CfgChangeNotify, super::dv::Empty> = ::grpcio::Method {
+const METHOD_DV_EXPORT_UUID_CFG_CHANGED: ::grpcio::Method<super::dv::CfgChangeNotify, super::dv::Result> = ::grpcio::Method {
     ty: ::grpcio::MethodType::Unary,
     name: "/DvExport/UuidCfgChanged",
     req_mar: ::grpcio::Marshaller { ser: ::grpcio::pb_ser, de: ::grpcio::pb_de },
@@ -44,35 +44,35 @@ impl DvExportClient {
         }
     }
 
-    pub fn kickout_uuid_opt(&self, req: &super::dv::Kickout, opt: ::grpcio::CallOption) -> ::grpcio::Result<super::dv::Empty> {
+    pub fn kickout_uuid_opt(&self, req: &super::dv::Kickout, opt: ::grpcio::CallOption) -> ::grpcio::Result<super::dv::Result> {
         self.client.unary_call(&METHOD_DV_EXPORT_KICKOUT_UUID, req, opt)
     }
 
-    pub fn kickout_uuid(&self, req: &super::dv::Kickout) -> ::grpcio::Result<super::dv::Empty> {
+    pub fn kickout_uuid(&self, req: &super::dv::Kickout) -> ::grpcio::Result<super::dv::Result> {
         self.kickout_uuid_opt(req, ::grpcio::CallOption::default())
     }
 
-    pub fn kickout_uuid_async_opt(&self, req: &super::dv::Kickout, opt: ::grpcio::CallOption) -> ::grpcio::Result<::grpcio::ClientUnaryReceiver<super::dv::Empty>> {
+    pub fn kickout_uuid_async_opt(&self, req: &super::dv::Kickout, opt: ::grpcio::CallOption) -> ::grpcio::Result<::grpcio::ClientUnaryReceiver<super::dv::Result>> {
         self.client.unary_call_async(&METHOD_DV_EXPORT_KICKOUT_UUID, req, opt)
     }
 
-    pub fn kickout_uuid_async(&self, req: &super::dv::Kickout) -> ::grpcio::Result<::grpcio::ClientUnaryReceiver<super::dv::Empty>> {
+    pub fn kickout_uuid_async(&self, req: &super::dv::Kickout) -> ::grpcio::Result<::grpcio::ClientUnaryReceiver<super::dv::Result>> {
         self.kickout_uuid_async_opt(req, ::grpcio::CallOption::default())
     }
 
-    pub fn uuid_cfg_changed_opt(&self, req: &super::dv::CfgChangeNotify, opt: ::grpcio::CallOption) -> ::grpcio::Result<super::dv::Empty> {
+    pub fn uuid_cfg_changed_opt(&self, req: &super::dv::CfgChangeNotify, opt: ::grpcio::CallOption) -> ::grpcio::Result<super::dv::Result> {
         self.client.unary_call(&METHOD_DV_EXPORT_UUID_CFG_CHANGED, req, opt)
     }
 
-    pub fn uuid_cfg_changed(&self, req: &super::dv::CfgChangeNotify) -> ::grpcio::Result<super::dv::Empty> {
+    pub fn uuid_cfg_changed(&self, req: &super::dv::CfgChangeNotify) -> ::grpcio::Result<super::dv::Result> {
         self.uuid_cfg_changed_opt(req, ::grpcio::CallOption::default())
     }
 
-    pub fn uuid_cfg_changed_async_opt(&self, req: &super::dv::CfgChangeNotify, opt: ::grpcio::CallOption) -> ::grpcio::Result<::grpcio::ClientUnaryReceiver<super::dv::Empty>> {
+    pub fn uuid_cfg_changed_async_opt(&self, req: &super::dv::CfgChangeNotify, opt: ::grpcio::CallOption) -> ::grpcio::Result<::grpcio::ClientUnaryReceiver<super::dv::Result>> {
         self.client.unary_call_async(&METHOD_DV_EXPORT_UUID_CFG_CHANGED, req, opt)
     }
 
-    pub fn uuid_cfg_changed_async(&self, req: &super::dv::CfgChangeNotify) -> ::grpcio::Result<::grpcio::ClientUnaryReceiver<super::dv::Empty>> {
+    pub fn uuid_cfg_changed_async(&self, req: &super::dv::CfgChangeNotify) -> ::grpcio::Result<::grpcio::ClientUnaryReceiver<super::dv::Result>> {
         self.uuid_cfg_changed_async_opt(req, ::grpcio::CallOption::default())
     }
     pub fn spawn<F>(&self, f: F) where F: ::futures_01::Future<Item = (), Error = ()> + Send + 'static {
@@ -81,8 +81,8 @@ impl DvExportClient {
 }
 
 pub trait DvExport {
-    fn kickout_uuid(&mut self, ctx: ::grpcio::RpcContext, req: super::dv::Kickout, sink: ::grpcio::UnarySink<super::dv::Empty>);
-    fn uuid_cfg_changed(&mut self, ctx: ::grpcio::RpcContext, req: super::dv::CfgChangeNotify, sink: ::grpcio::UnarySink<super::dv::Empty>);
+    fn kickout_uuid(&mut self, ctx: ::grpcio::RpcContext, req: super::dv::Kickout, sink: ::grpcio::UnarySink<super::dv::Result>);
+    fn uuid_cfg_changed(&mut self, ctx: ::grpcio::RpcContext, req: super::dv::CfgChangeNotify, sink: ::grpcio::UnarySink<super::dv::Result>);
 }
 
 pub fn create_dv_export<S: DvExport + Send + Clone + 'static>(s: S) -> ::grpcio::Service {

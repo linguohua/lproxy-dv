@@ -27,25 +27,42 @@ use protobuf::ProtobufEnum as ProtobufEnum_imported_for_functions;
 // const _PROTOBUF_VERSION_CHECK: () = ::protobuf::VERSION_2_14_0;
 
 #[derive(PartialEq,Clone,Default)]
-pub struct Empty {
+pub struct Result {
+    // message fields
+    pub code: i32,
     // special fields
     pub unknown_fields: ::protobuf::UnknownFields,
     pub cached_size: ::protobuf::CachedSize,
 }
 
-impl<'a> ::std::default::Default for &'a Empty {
-    fn default() -> &'a Empty {
-        <Empty as ::protobuf::Message>::default_instance()
+impl<'a> ::std::default::Default for &'a Result {
+    fn default() -> &'a Result {
+        <Result as ::protobuf::Message>::default_instance()
     }
 }
 
-impl Empty {
-    pub fn new() -> Empty {
+impl Result {
+    pub fn new() -> Result {
         ::std::default::Default::default()
     }
+
+    // int32 code = 1;
+
+
+    pub fn get_code(&self) -> i32 {
+        self.code
+    }
+    pub fn clear_code(&mut self) {
+        self.code = 0;
+    }
+
+    // Param is passed by value, moved
+    pub fn set_code(&mut self, v: i32) {
+        self.code = v;
+    }
 }
 
-impl ::protobuf::Message for Empty {
+impl ::protobuf::Message for Result {
     fn is_initialized(&self) -> bool {
         true
     }
@@ -54,6 +71,13 @@ impl ::protobuf::Message for Empty {
         while !is.eof()? {
             let (field_number, wire_type) = is.read_tag_unpack()?;
             match field_number {
+                1 => {
+                    if wire_type != ::protobuf::wire_format::WireTypeVarint {
+                        return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
+                    }
+                    let tmp = is.read_int32()?;
+                    self.code = tmp;
+                },
                 _ => {
                     ::protobuf::rt::read_unknown_or_skip_group(field_number, wire_type, is, self.mut_unknown_fields())?;
                 },
@@ -66,12 +90,18 @@ impl ::protobuf::Message for Empty {
     #[allow(unused_variables)]
     fn compute_size(&self) -> u32 {
         let mut my_size = 0;
+        if self.code != 0 {
+            my_size += ::protobuf::rt::value_size(1, self.code, ::protobuf::wire_format::WireTypeVarint);
+        }
         my_size += ::protobuf::rt::unknown_fields_size(self.get_unknown_fields());
         self.cached_size.set(my_size);
         my_size
     }
 
     fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::ProtobufResult<()> {
+        if self.code != 0 {
+            os.write_int32(1, self.code)?;
+        }
         os.write_unknown_fields(self.get_unknown_fields())?;
         ::std::result::Result::Ok(())
     }
@@ -102,17 +132,22 @@ impl ::protobuf::Message for Empty {
         Self::descriptor_static()
     }
 
-    fn new() -> Empty {
-        Empty::new()
+    fn new() -> Result {
+        Result::new()
     }
 
     fn descriptor_static() -> &'static ::protobuf::reflect::MessageDescriptor {
         static mut descriptor: ::protobuf::lazy::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::lazy::Lazy::INIT;
         unsafe {
             descriptor.get(|| {
-                let fields = ::std::vec::Vec::new();
-                ::protobuf::reflect::MessageDescriptor::new_pb_name::<Empty>(
-                    "Empty",
+                let mut fields = ::std::vec::Vec::new();
+                fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeInt32>(
+                    "code",
+                    |m: &Result| { &m.code },
+                    |m: &mut Result| { &mut m.code },
+                ));
+                ::protobuf::reflect::MessageDescriptor::new_pb_name::<Result>(
+                    "Result",
                     fields,
                     file_descriptor_proto()
                 )
@@ -120,27 +155,28 @@ impl ::protobuf::Message for Empty {
         }
     }
 
-    fn default_instance() -> &'static Empty {
-        static mut instance: ::protobuf::lazy::Lazy<Empty> = ::protobuf::lazy::Lazy::INIT;
+    fn default_instance() -> &'static Result {
+        static mut instance: ::protobuf::lazy::Lazy<Result> = ::protobuf::lazy::Lazy::INIT;
         unsafe {
-            instance.get(Empty::new)
+            instance.get(Result::new)
         }
     }
 }
 
-impl ::protobuf::Clear for Empty {
+impl ::protobuf::Clear for Result {
     fn clear(&mut self) {
+        self.code = 0;
         self.unknown_fields.clear();
     }
 }
 
-impl ::std::fmt::Debug for Empty {
+impl ::std::fmt::Debug for Result {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
         ::protobuf::text_format::fmt(self, f)
     }
 }
 
-impl ::protobuf::reflect::ProtobufValue for Empty {
+impl ::protobuf::reflect::ProtobufValue for Result {
     fn as_ref(&self) -> ::protobuf::reflect::ReflectValueRef {
         ::protobuf::reflect::ReflectValueRef::Message(self)
     }
@@ -508,38 +544,43 @@ impl ::protobuf::reflect::ProtobufValue for CfgChangeNotify {
 }
 
 static file_descriptor_proto_data: &'static [u8] = b"\
-    \n\x08dv.proto\"\x07\n\x05Empty\"\x1d\n\x07Kickout\x12\x12\n\x04uuid\x18\
-    \x01\x20\x01(\tR\x04uuid\"I\n\x0fCfgChangeNotify\x12\x12\n\x04uuid\x18\
-    \x01\x20\x01(\tR\x04uuid\x12\"\n\rkb_per_second\x18\x02\x20\x01(\x04R\
-    \x0bkbPerSecond2[\n\x08DvExport\x12!\n\x0bKickoutUuid\x12\x08.Kickout\
-    \x1a\x06.Empty\"\0\x12,\n\x0eUuidCfgChanged\x12\x10.CfgChangeNotify\x1a\
-    \x06.Empty\"\0J\xd9\x05\n\x06\x12\x04\0\0\x18\x01\n\x08\n\x01\x0c\x12\
-    \x03\0\0\x12\n\xff\x01\n\x02\x06\0\x12\x04\x07\0\n\x012\xf2\x01\x20proto\
-    c\x20--rust_out=.\x20--grpc_out=.\x20--plugin=protoc-gen-grpc=`which\x20\
-    grpc_rust_plugin`\x20dv.proto\n\x20if\x20protobuffer\x20tool\x20version\
-    \x20not\x20match\x20with\x20newest\x20protobuf\x20rust\x20lib,\x20need\
-    \x20to\x20update:\n\x20cargo\x20install\x20protobuf-codegen\n\x20cargo\
-    \x20install\x20grpcio-compiler\n\n\n\n\x03\x06\0\x01\x12\x03\x07\x08\x10\
-    \n\x0b\n\x04\x06\0\x02\0\x12\x03\x08\x04/\n\x0c\n\x05\x06\0\x02\0\x01\
-    \x12\x03\x08\x08\x13\n\x0c\n\x05\x06\0\x02\0\x02\x12\x03\x08\x14\x1b\n\
-    \x0c\n\x05\x06\0\x02\0\x03\x12\x03\x08&+\n\x0b\n\x04\x06\0\x02\x01\x12\
-    \x03\t\x04:\n\x0c\n\x05\x06\0\x02\x01\x01\x12\x03\t\x08\x16\n\x0c\n\x05\
-    \x06\0\x02\x01\x02\x12\x03\t\x17&\n\x0c\n\x05\x06\0\x02\x01\x03\x12\x03\
-    \t16\n\t\n\x02\x04\0\x12\x03\x0c\0\x10\n\n\n\x03\x04\0\x01\x12\x03\x0c\
-    \x08\r\n\n\n\x02\x04\x01\x12\x04\x0e\0\x11\x01\n\n\n\x03\x04\x01\x01\x12\
-    \x03\x0e\x08\x0f\n)\n\x04\x04\x01\x02\0\x12\x03\x10\x04\x14\x1a\x1c\x20w\
-    hich\x20device\x20to\x20be\x20kickout\n\n\x0c\n\x05\x04\x01\x02\0\x05\
-    \x12\x03\x10\x04\n\n\x0c\n\x05\x04\x01\x02\0\x01\x12\x03\x10\x0b\x0f\n\
-    \x0c\n\x05\x04\x01\x02\0\x03\x12\x03\x10\x12\x13\n\n\n\x02\x04\x02\x12\
-    \x04\x13\0\x18\x01\n\n\n\x03\x04\x02\x01\x12\x03\x13\x08\x17\n-\n\x04\
-    \x04\x02\x02\0\x12\x03\x15\x04\x14\x1a\x20\x20which\x20device's\x20cfg\
-    \x20has\x20changed\n\n\x0c\n\x05\x04\x02\x02\0\x05\x12\x03\x15\x04\n\n\
-    \x0c\n\x05\x04\x02\x02\0\x01\x12\x03\x15\x0b\x0f\n\x0c\n\x05\x04\x02\x02\
-    \0\x03\x12\x03\x15\x12\x13\n*\n\x04\x04\x02\x02\x01\x12\x03\x17\x04\x1d\
-    \x1a\x1d\x20the\x20bandwidth\x20limit\x20changed\n\n\x0c\n\x05\x04\x02\
-    \x02\x01\x05\x12\x03\x17\x04\n\n\x0c\n\x05\x04\x02\x02\x01\x01\x12\x03\
-    \x17\x0b\x18\n\x0c\n\x05\x04\x02\x02\x01\x03\x12\x03\x17\x1b\x1cb\x06pro\
-    to3\
+    \n\x08dv.proto\"\x1c\n\x06Result\x12\x12\n\x04code\x18\x01\x20\x01(\x05R\
+    \x04code\"\x1d\n\x07Kickout\x12\x12\n\x04uuid\x18\x01\x20\x01(\tR\x04uui\
+    d\"I\n\x0fCfgChangeNotify\x12\x12\n\x04uuid\x18\x01\x20\x01(\tR\x04uuid\
+    \x12\"\n\rkb_per_second\x18\x02\x20\x01(\x04R\x0bkbPerSecond2]\n\x08DvEx\
+    port\x12\"\n\x0bKickoutUuid\x12\x08.Kickout\x1a\x07.Result\"\0\x12-\n\
+    \x0eUuidCfgChanged\x12\x10.CfgChangeNotify\x1a\x07.Result\"\0J\x81\x07\n\
+    \x06\x12\x04\0\0\x1b\x01\n\x08\n\x01\x0c\x12\x03\0\0\x12\n\xd0\x02\n\x02\
+    \x06\0\x12\x04\x08\0\x0b\x012\xc3\x02\x20protoc\x20--rust_out=.\x20--grp\
+    c_out=.\x20--plugin=protoc-gen-grpc=`which\x20grpc_rust_plugin`\x20dv.pr\
+    oto\n\x20python\x20-m\x20grpc_tools.protoc\x20-I./\x20--python_out=.\x20\
+    --grpc_python_out=.\x20./dv.proto\x20\n\x20if\x20protobuffer\x20tool\x20\
+    version\x20not\x20match\x20with\x20newest\x20protobuf\x20rust\x20lib,\
+    \x20need\x20to\x20update:\n\x20cargo\x20install\x20protobuf-codegen\n\
+    \x20cargo\x20install\x20grpcio-compiler\n\n\n\n\x03\x06\0\x01\x12\x03\
+    \x08\x08\x10\n\x0b\n\x04\x06\0\x02\0\x12\x03\t\x040\n\x0c\n\x05\x06\0\
+    \x02\0\x01\x12\x03\t\x08\x13\n\x0c\n\x05\x06\0\x02\0\x02\x12\x03\t\x14\
+    \x1b\n\x0c\n\x05\x06\0\x02\0\x03\x12\x03\t&,\n\x0b\n\x04\x06\0\x02\x01\
+    \x12\x03\n\x04;\n\x0c\n\x05\x06\0\x02\x01\x01\x12\x03\n\x08\x16\n\x0c\n\
+    \x05\x06\0\x02\x01\x02\x12\x03\n\x17&\n\x0c\n\x05\x06\0\x02\x01\x03\x12\
+    \x03\n17\n\n\n\x02\x04\0\x12\x04\r\0\x0f\x01\n\n\n\x03\x04\0\x01\x12\x03\
+    \r\x08\x0e\n*\n\x04\x04\0\x02\0\x12\x03\x0e\x04\x13\"\x1d\x200\x20succee\
+    d,\x20otherwise\x20failed\n\n\x0c\n\x05\x04\0\x02\0\x05\x12\x03\x0e\x04\
+    \t\n\x0c\n\x05\x04\0\x02\0\x01\x12\x03\x0e\n\x0e\n\x0c\n\x05\x04\0\x02\0\
+    \x03\x12\x03\x0e\x11\x12\n\n\n\x02\x04\x01\x12\x04\x11\0\x14\x01\n\n\n\
+    \x03\x04\x01\x01\x12\x03\x11\x08\x0f\n)\n\x04\x04\x01\x02\0\x12\x03\x13\
+    \x04\x14\x1a\x1c\x20which\x20device\x20to\x20be\x20kickout\n\n\x0c\n\x05\
+    \x04\x01\x02\0\x05\x12\x03\x13\x04\n\n\x0c\n\x05\x04\x01\x02\0\x01\x12\
+    \x03\x13\x0b\x0f\n\x0c\n\x05\x04\x01\x02\0\x03\x12\x03\x13\x12\x13\n\n\n\
+    \x02\x04\x02\x12\x04\x16\0\x1b\x01\n\n\n\x03\x04\x02\x01\x12\x03\x16\x08\
+    \x17\n-\n\x04\x04\x02\x02\0\x12\x03\x18\x04\x14\x1a\x20\x20which\x20devi\
+    ce's\x20cfg\x20has\x20changed\n\n\x0c\n\x05\x04\x02\x02\0\x05\x12\x03\
+    \x18\x04\n\n\x0c\n\x05\x04\x02\x02\0\x01\x12\x03\x18\x0b\x0f\n\x0c\n\x05\
+    \x04\x02\x02\0\x03\x12\x03\x18\x12\x13\n*\n\x04\x04\x02\x02\x01\x12\x03\
+    \x1a\x04\x1d\x1a\x1d\x20the\x20bandwidth\x20limit\x20changed\n\n\x0c\n\
+    \x05\x04\x02\x02\x01\x05\x12\x03\x1a\x04\n\n\x0c\n\x05\x04\x02\x02\x01\
+    \x01\x12\x03\x1a\x0b\x18\n\x0c\n\x05\x04\x02\x02\x01\x03\x12\x03\x1a\x1b\
+    \x1cb\x06proto3\
 ";
 
 static mut file_descriptor_proto_lazy: ::protobuf::lazy::Lazy<::protobuf::descriptor::FileDescriptorProto> = ::protobuf::lazy::Lazy::INIT;

@@ -16,8 +16,8 @@ pub enum SubServiceCtlCmd {
     Stop,
     TcpTunnel(WSStreamInfo),
     UpdateEtcdCfg(Arc<EtcdConfig>),
-    Kickout(String),
-    CfgChangeNotify(myrpc::CfgChangeNotify),
+    Kickout(String, UnboundedSender<myrpc::Result>),
+    CfgChangeNotify(myrpc::CfgChangeNotify, UnboundedSender<myrpc::Result>),
 }
 
 pub enum SubServiceType {
@@ -43,8 +43,8 @@ impl fmt::Display for SubServiceCtlCmd {
             SubServiceCtlCmd::Stop => s = "Stop",
             SubServiceCtlCmd::TcpTunnel(_) => s = "TcpTunnel",
             SubServiceCtlCmd::UpdateEtcdCfg(_) => s = "UpdateEtcdCfg",
-            SubServiceCtlCmd::Kickout(_) => s = "Kickout",
-            SubServiceCtlCmd::CfgChangeNotify(_) => s = "CfgChangeNotify",
+            SubServiceCtlCmd::Kickout(_, _) => s = "Kickout",
+            SubServiceCtlCmd::CfgChangeNotify(_, _) => s = "CfgChangeNotify",
         }
         write!(f, "({})", s)
     }
@@ -168,13 +168,13 @@ fn start_one_tunmgr(
                         let f = tunmgr.clone();
                         f.borrow_mut().on_update_etcd_cfg(&cfg);
                     }
-                    SubServiceCtlCmd::Kickout(uuid) => {
+                    SubServiceCtlCmd::Kickout(uuid, sink) => {
                         let f = tunmgr.clone();
-                        f.borrow_mut().on_kickout_uuid(uuid);
+                        f.borrow_mut().on_kickout_uuid(uuid, sink);
                     }
-                    SubServiceCtlCmd::CfgChangeNotify(cfg) => {
+                    SubServiceCtlCmd::CfgChangeNotify(cfg, sink) => {
                         let f = tunmgr.clone();
-                        f.borrow_mut().on_device_cfg_changed(cfg);
+                        f.borrow_mut().on_device_cfg_changed(cfg, sink);
                     } // _ => {
                       //     error!("[SubService]tunmgr unknown ctl cmd:{}", cmd);
                       // }

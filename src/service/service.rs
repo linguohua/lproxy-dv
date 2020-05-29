@@ -5,7 +5,7 @@ use log::{debug, error, info};
 use std::fmt;
 use std::time::Duration;
 use stream_cancel::{Trigger, Tripwire};
-use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 const STATE_STOPPED: u8 = 0;
 const STATE_STARTING: u8 = 1;
 const STATE_RUNNING: u8 = 2;
@@ -43,8 +43,8 @@ pub enum Instruction {
     ServiceMonitor,
 
     ReportBandwidth(BandwidthReportMap),
-    Kickout(String),
-    CfgChangeNotify(myrpc::CfgChangeNotify),
+    Kickout(String, ::grpcio::UnarySink<myrpc::Result>),
+    CfgChangeNotify(myrpc::CfgChangeNotify, ::grpcio::UnarySink<myrpc::Result>),
 }
 
 impl fmt::Display for Instruction {
@@ -58,8 +58,8 @@ impl fmt::Display for Instruction {
             Instruction::UpdateEtcdConfig => s = "UpdateEtcdConfig",
             Instruction::ServiceMonitor => s = "ServiceMonitor",
             Instruction::ReportBandwidth(_) => s = "ReportBandwidth",
-            Instruction::Kickout(_) => s = "Kickout",
-            Instruction::CfgChangeNotify(_) => s = "CfgChangeNotify",
+            Instruction::Kickout(_, _) => s = "Kickout",
+            Instruction::CfgChangeNotify(_, __) => s = "CfgChangeNotify",
         }
         write!(f, "({})", s)
     }
@@ -220,13 +220,14 @@ impl Service {
         }
     }
 
-    fn do_kickout(s: LongLiveS, uuid: String) {
+    fn do_kickout(s: LongLiveS, uuid: String, sink: ::grpcio::UnarySink<myrpc::Result>) {
         let rf = s.borrow();
+        let (tx, rx) = unbounded_channel();
         for ss in rf.subservices.iter() {
             match ss.sstype {
                 SubServiceType::TunMgr => {
                     if ss.ctl_tx.is_some() {
-                        let cmd = SubServiceCtlCmd::Kickout(uuid.to_string());
+                        let cmd = SubServiceCtlCmd::Kickout(uuid.to_string(), tx.clone());
                         match ss.ctl_tx.as_ref().unwrap().send(cmd) {
                             Err(e) => {
                                 error!("[Service] send update etcdcfg to listener failed:{}", e);
@@ -238,16 +239,23 @@ impl Service {
                 _ => {}
             }
         }
+
+        Service::wait_success_result(rx, sink)
     }
 
-    fn do_cfgchanged_notify(s: LongLiveS, notify: myrpc::CfgChangeNotify) {
+    fn do_cfgchanged_notify(
+        s: LongLiveS,
+        notify: myrpc::CfgChangeNotify,
+        sink: ::grpcio::UnarySink<myrpc::Result>,
+    ) {
         let rf = s.borrow();
+        let (tx, rx) = unbounded_channel();
         for ss in rf.subservices.iter() {
             match ss.sstype {
                 SubServiceType::TunMgr => {
                     if ss.ctl_tx.is_some() {
                         info!("[Service] send update cfg to tunmgr");
-                        let cmd = SubServiceCtlCmd::CfgChangeNotify(notify.clone());
+                        let cmd = SubServiceCtlCmd::CfgChangeNotify(notify.clone(), tx.clone());
                         match ss.ctl_tx.as_ref().unwrap().send(cmd) {
                             Err(e) => {
                                 error!("[Service] send update cfg to listener failed:{}", e);
@@ -259,6 +267,8 @@ impl Service {
                 _ => {}
             }
         }
+
+        Service::wait_success_result(rx, sink)
     }
 
     fn save_etcd_cfg(&mut self, etcdcfg: config::EtcdConfig) {
@@ -490,11 +500,11 @@ impl Service {
             Instruction::ReportBandwidth(bw) => {
                 Service::do_bandwidth_merge(s, bw);
             }
-            Instruction::Kickout(uuid) => {
-                Service::do_kickout(s, uuid);
+            Instruction::Kickout(uuid, sink) => {
+                Service::do_kickout(s, uuid, sink);
             }
-            Instruction::CfgChangeNotify(notify) => {
-                Service::do_cfgchanged_notify(s, notify);
+            Instruction::CfgChangeNotify(notify, sink) => {
+                Service::do_cfgchanged_notify(s, notify, sink);
             }
         }
     }
@@ -618,5 +628,25 @@ impl Service {
             info!("[Service] monitor timer future completed");
         };
         tokio::task::spawn_local(task);
+    }
+
+    fn wait_success_result(
+        mut rx: UnboundedReceiver<myrpc::Result>,
+        sink: ::grpcio::UnarySink<myrpc::Result>,
+    ) {
+        let fut = async move {
+            let mut result = myrpc::Result::new();
+            result.set_code(1);
+            while let Some(r) = rx.next().await {
+                if r.code == 0 {
+                    result.set_code(0);
+                    break;
+                }
+            }
+
+            sink.success(result);
+        };
+
+        tokio::task::spawn_local(fut);
     }
 }

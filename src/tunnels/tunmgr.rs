@@ -14,6 +14,7 @@ use std::result::Result;
 use std::sync::Arc;
 use std::time::Duration;
 use stream_cancel::{Trigger, Tripwire};
+use tokio::sync::mpsc::UnboundedSender;
 
 type LongLive = Rc<RefCell<TunMgr>>;
 pub type LongLiveTM = LongLive;
@@ -268,8 +269,11 @@ impl TunMgr {
         }
     }
 
-    pub fn on_kickout_uuid(&mut self, uuid: String) {
+    pub fn on_kickout_uuid(&mut self, uuid: String, sink: UnboundedSender<myrpc::Result>) {
         let ua = self.device_map.remove(&uuid);
+        let mut result = myrpc::Result::new();
+        result.set_code(1);
+
         match ua {
             Some(u) => {
                 info!("[TunMgr] on_kickout_uuid device, uuid:{}", uuid);
@@ -284,20 +288,40 @@ impl TunMgr {
                         _ => {}
                     }
                 }
+
+                result.set_code(0);
             }
-            None => {}
+            None => {
+                info!("[TunMgr] on_kickout_uuid device, uuid:{} not found", uuid);
+            }
+        }
+
+        match sink.send(result) {
+            Err(e) => {
+                error!("[TunMgr] on_device_cfg_changed, sink.send failed:{}", e);
+            }
+            _ => {}
         }
     }
 
-    pub fn on_device_cfg_changed(&mut self, notify: myrpc::CfgChangeNotify) {
+    pub fn on_device_cfg_changed(
+        &mut self,
+        notify: myrpc::CfgChangeNotify,
+        sink: UnboundedSender<myrpc::Result>,
+    ) {
         let uuid = &notify.uuid;
 
         let ua = self.device_map.get(uuid);
+        let mut result = myrpc::Result::new();
+        result.set_code(1);
+
         match ua {
             Some(u) => {
                 info!("[TunMgr] on_device_cfg_changed, uuid:{}", uuid);
                 u.borrow_mut()
                     .set_new_quota_per_second(notify.kb_per_second);
+
+                result.set_code(0);
             }
             None => {
                 error!(
@@ -305,6 +329,13 @@ impl TunMgr {
                     uuid
                 );
             }
+        }
+
+        match sink.send(result) {
+            Err(e) => {
+                error!("[TunMgr] on_device_cfg_changed, sink.send failed:{}", e);
+            }
+            _ => {}
         }
     }
 }

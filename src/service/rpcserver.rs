@@ -57,12 +57,11 @@ impl myrpc::DvExport for DvExportImpl {
         &mut self,
         _ctx: ::grpcio::RpcContext,
         req: myrpc::Kickout,
-        sink: ::grpcio::UnarySink<myrpc::Empty>,
+        sink: ::grpcio::UnarySink<myrpc::Result>,
     ) {
         //
-        info!("[gRpcServer] kickout_uuid called");
-        let rsp = myrpc::Empty::default();
-        let ins = Instruction::Kickout(req.uuid);
+        info!("[gRpcServer] kickout_uuid called, uuid:{}", req.uuid);
+        let ins = Instruction::Kickout(req.uuid, sink);
 
         match self.ref_service_tx.send(ins) {
             Err(e) => {
@@ -70,19 +69,17 @@ impl myrpc::DvExport for DvExportImpl {
             }
             _ => {}
         }
-
-        sink.success(rsp);
     }
 
     fn uuid_cfg_changed(
         &mut self,
         _ctx: ::grpcio::RpcContext,
         req: myrpc::CfgChangeNotify,
-        sink: ::grpcio::UnarySink<myrpc::Empty>,
+        sink: ::grpcio::UnarySink<myrpc::Result>,
     ) {
         //
-        info!("[gRpcServer] uuid_cfg_changed called");
-        let ins = Instruction::CfgChangeNotify(req);
+        info!("[gRpcServer] uuid_cfg_changed called, uuid:{}", req.uuid);
+        let ins = Instruction::CfgChangeNotify(req, sink);
 
         match self.ref_service_tx.send(ins) {
             Err(e) => {
@@ -90,9 +87,6 @@ impl myrpc::DvExport for DvExportImpl {
             }
             _ => {}
         }
-
-        let rsp = myrpc::Empty::default();
-        sink.success(rsp);
     }
 }
 
