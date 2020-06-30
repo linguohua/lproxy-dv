@@ -345,7 +345,7 @@ impl Tunnel {
         //info!("[Tunnel] on_pong");
         let len = bs.len();
         if len != 8 {
-            error!("[Tunnel]pong data length({}) != 8", len);
+            error!("[Tunnel] {} pong data length({}) != 8", self.tunnel_id, len);
             return;
         }
 
@@ -361,6 +361,7 @@ impl Tunnel {
 
     pub fn on_closed(&mut self) {
         // free all requests
+        self.close_rawfd();
         let reqs = &mut self.requests;
         reqs.clear_all();
 
@@ -685,7 +686,7 @@ impl Tunnel {
         let r = self.tx.send(msg);
         match r {
             Err(e) => {
-                error!("[Tunnel]tunnel send_ping error:{}", e);
+                error!("[Tunnel] {} tunnel send_ping error:{}", self.tunnel_id, e);
             }
             _ => {
                 self.ping_count += 1;
