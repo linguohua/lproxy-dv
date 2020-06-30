@@ -141,7 +141,7 @@ impl TunMgr {
         tun.device.borrow_mut().forget(id);
         self.tunnels_map.remove(&id);
 
-        info!("[TunMgr]on_tunnel_closed, id:{}", tun.tunnel_id);
+        info!("[TunMgr]on_tunnel_closed, id:{}", id);
         tun.on_closed();
     }
 
