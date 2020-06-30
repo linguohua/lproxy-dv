@@ -137,9 +137,11 @@ impl TunMgr {
     pub fn on_tunnel_closed(&mut self, tun: Rc<RefCell<Tunnel>>) {
         let mut tun = tun.borrow_mut();
         let id = tun.tunnel_id;
+
         tun.device.borrow_mut().forget(id);
         self.tunnels_map.remove(&id);
 
+        info!("[TunMgr]on_tunnel_closed, id:{}", tun.tunnel_id);
         tun.on_closed();
     }
 
