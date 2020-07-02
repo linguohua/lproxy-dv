@@ -137,7 +137,17 @@ impl Listener {
                     }
                     Err(e) => {
                         error!("[Server]server accept error {:?}", e);
-                        break;
+                        match e.raw_os_error() {
+                            Some(code) => {
+                                if code != 24 {
+                                    // error Os { code: 24, kind: Other, message: "Too many open files" }
+                                    break;
+                                }
+                            }
+                            None => {
+                                break;
+                            }
+                        }
                     }
                 }
             }
