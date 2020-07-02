@@ -12,7 +12,13 @@ use tokio::time::Delay;
 
 pub fn proxy_dns(_: &Tunnel, tl: LongLiveTun, msg_buf: Vec<u8>, port: u16, ip32: u32) {
     let local_addr: SocketAddr = "0.0.0.0:0".parse().unwrap();
-    let socket_udp = std::net::UdpSocket::bind(local_addr).unwrap();
+    let socket_udp = match std::net::UdpSocket::bind(local_addr) {
+        Ok(s) => s,
+        Err(e) => {
+            error!("[DnsProxy]query dns UdpSocket::bind failed:{}", e);
+            return;
+        }
+    };
     let mut udp = UdpSocket::from_std(socket_udp).unwrap();
 
     // FOR DNS msg, 600 should be enough
