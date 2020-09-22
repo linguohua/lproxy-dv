@@ -124,6 +124,14 @@ where
             }
 
             if msg.is_completed() {
+                if msg.error.is_some() {
+                    let e = msg.error.take().unwrap();
+                    log::info!("LwsFramed read message error:{}", e);
+                    self_mut.has_finished = true;
+
+                    return Poll::Ready(Some(Err(e)));
+                }
+
                 // if message is completed
                 // return ready
                 return Poll::Ready(Some(Ok(self_mut.reading.take().unwrap())));

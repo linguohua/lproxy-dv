@@ -2,6 +2,7 @@ use byte::*;
 use bytes::{Buf, BufMut};
 use core::mem::MaybeUninit;
 use std::slice;
+use std::io::{Error, ErrorKind};
 
 pub const DEFAULT_CAP: usize = 8096;
 pub const HEAD_SIZE: usize = 2;
@@ -9,6 +10,7 @@ pub const HEAD_SIZE: usize = 2;
 pub struct RMessage {
     pub buf: Option<Vec<u8>>,
     pub cached_legnth: u16,
+    pub error: Option<Error>,
 }
 
 impl RMessage {
@@ -17,10 +19,15 @@ impl RMessage {
         RMessage {
             buf: Some(buf),
             cached_legnth: 0,
+            error: None,
         }
     }
 
     pub fn is_completed(&self) -> bool {
+        if self.error.is_some() {
+            return true;
+        }
+
         let vec = self.buf.as_ref().unwrap();
         self.cached_legnth > 0 && self.cached_legnth == (vec.len() as u16)
     }
@@ -34,6 +41,10 @@ impl RMessage {
 
 impl BufMut for RMessage {
     fn remaining_mut(&self) -> usize {
+        if self.error.is_some() {
+            return 0
+        }
+
         let vec = self.buf.as_ref().unwrap();
         let remain;
         // if no header read
@@ -61,7 +72,8 @@ impl BufMut for RMessage {
             self.cached_legnth = bs.read_with::<u16>(offset, LE).unwrap();
 
             if self.cached_legnth == 0 || self.cached_legnth > (DEFAULT_CAP as u16) {
-                panic!("cached_legnth not valid:{}", self.cached_legnth);
+                // panic!("cached_legnth not valid:{}", self.cached_legnth);
+                self.error =  Some(Error::new(ErrorKind::Other, format!("cached_legnth not valid:{}", self.cached_legnth)));
             }
             // println!("cached_legnth: {}", self.cached_legnth);
         }
