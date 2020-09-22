@@ -7,7 +7,6 @@ use tokio;
 
 pub fn serve_websocket(
     wsinfo: WSStreamInfo,
-    tun_quota: u32,
     accref: &mut UserDevice,
     device: LongLiveUD,
     s: LongLiveTM,
@@ -48,7 +47,6 @@ pub fn serve_websocket(
             rf.dns_server_addr,
             tunnel_cap,
             tunnel_req_quota,
-            tun_quota,
             device,
             is_dns,
         )

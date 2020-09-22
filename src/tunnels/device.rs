@@ -121,7 +121,6 @@ impl UserDevice {
 
         super::serve_websocket(
             wsinfo,
-            self.quota_per_second as u32,
             self,
             ll,
             self.tm.clone(),
@@ -209,7 +208,6 @@ impl UserDevice {
                 Some(wsinfo) => {
                     super::serve_websocket(
                         wsinfo,
-                        self.quota_per_second as u32,
                         self,
                         ll.clone(),
                         self.tm.clone(),

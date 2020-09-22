@@ -23,7 +23,7 @@ where
     T: Sink<WMessage>,
 {
     pub fn new(sink: T, tun: Rc<RefCell<Tunnel>>) -> Self {
-        let has_flowctl = tun.borrow().has_flowctl;
+        let has_flowctl = tun.borrow().has_flowctl();
         SinkEx {
             sink,
             bytes_consume: 0,

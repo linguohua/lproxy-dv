@@ -41,8 +41,7 @@ pub struct Tunnel {
     recv_message_count: usize,
     recv_message_size: usize,
 
-    pub has_flowctl: bool,
-    req_quota: u32,
+    req_packets_quota: u32,
 
     pub recv_bytes_counter: u64,
     pub send_bytes_counter: u64,
@@ -57,23 +56,19 @@ impl Tunnel {
         rawfd: RawFd,
         dns_server_addr: Option<SocketAddr>,
         cap: usize,
-        req_quota: u32,
-        tun_quota: u32,
+        req_packets_quota: u32,
         device: LongLiveUD,
         is_for_dns: bool,
     ) -> LongLiveTun {
-        let has_flowctl;
         if is_for_dns {
-            has_flowctl = false;
             info!(
                 "[Tunnel]new dns Tunnel, idx:{}, dns:{:?}",
                 tid, dns_server_addr
             );
         } else {
-            has_flowctl = tun_quota > 0;
             info!(
-                "[Tunnel]new Tunnel, idx:{}, cap:{}, flowctl enable:{}, tun_quota:{}, req_quota:{}",
-                tid, cap, has_flowctl, tun_quota, req_quota,
+                "[Tunnel]new Tunnel, idx:{}, cap:{}, req_quota:{}",
+                tid, cap, req_packets_quota,
             );
         }
 
@@ -94,9 +89,7 @@ impl Tunnel {
             dns_server_addr: dns_server_addr,
             recv_message_count: 0,
             recv_message_size: 0,
-
-            has_flowctl,
-            req_quota,
+            req_packets_quota,
             recv_bytes_counter: 0,
             send_bytes_counter: 0,
             device,
@@ -260,7 +253,7 @@ impl Tunnel {
 
                 // port, u16
                 let port = bs.read_with::<u16>(offset, LE).unwrap();
-                self.requests.alloc(req_idx, req_tag, self.req_quota);
+                self.requests.alloc(req_idx, req_tag, self.req_packets_quota);
 
                 // start connect to target
                 if super::proxy_request(self, tl, req_idx, req_tag, port, host) {
@@ -700,6 +693,14 @@ impl Tunnel {
         self.device
             .borrow_mut()
             .poll_tunnel_quota_with(bytes_cosume, waker)
+    }
+
+    pub fn has_flowctl(&self) -> bool {
+        if self.is_for_dns {
+            return false
+        }
+
+        self.device.borrow().has_flowctl()
     }
 
     fn on_udpx_north(&mut self, msg: RMessage) {
