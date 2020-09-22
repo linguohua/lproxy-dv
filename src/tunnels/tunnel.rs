@@ -695,14 +695,6 @@ impl Tunnel {
             .poll_tunnel_quota_with(bytes_cosume, waker)
     }
 
-    pub fn has_flowctl(&self) -> bool {
-        if self.is_for_dns {
-            return false
-        }
-
-        self.device.borrow().has_flowctl()
-    }
-
     fn on_udpx_north(&mut self, msg: RMessage) {
         // forward to device
         self.device.borrow_mut().on_udpx_north(self.tx.clone(), msg);

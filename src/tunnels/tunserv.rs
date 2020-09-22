@@ -52,6 +52,13 @@ pub fn serve_websocket(
         )
     };
 
+    let has_flowctl;
+    if is_dns {
+        has_flowctl = false;
+    } else {
+        has_flowctl = accref.has_flowctl();
+    }
+
     {
         let mut rf = s.borrow_mut();
         if let Err(_) = rf.on_tunnel_created(accref, t.clone()) {
@@ -84,7 +91,7 @@ pub fn serve_websocket(
     };
 
     let rx = rx.map(|x| Ok(x));
-    let send_fut = rx.forward(super::SinkEx::new(sink, t2.clone())); // TODO:
+    let send_fut = rx.forward(super::SinkEx::new(sink, t2.clone(), has_flowctl)); // TODO:
 
     // Wait for one future to complete.
     let select_fut = async move {

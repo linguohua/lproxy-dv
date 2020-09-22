@@ -22,8 +22,8 @@ impl<T> SinkEx<T>
 where
     T: Sink<WMessage>,
 {
-    pub fn new(sink: T, tun: Rc<RefCell<Tunnel>>) -> Self {
-        let has_flowctl = tun.borrow().has_flowctl();
+    pub fn new(sink: T, tun: Rc<RefCell<Tunnel>>, flowctl: bool) -> Self {
+        let has_flowctl = flowctl;
         SinkEx {
             sink,
             bytes_consume: 0,
