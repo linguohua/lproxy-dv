@@ -732,7 +732,7 @@ dependencies = [
 
 [[package]]
 name = "lproxy-dv"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "aes 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "base64 0.12.1 (registry+https://github.com/rust-lang/crates.io-index)",
