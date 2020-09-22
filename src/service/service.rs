@@ -79,12 +79,17 @@ pub struct Service {
     flow_map: BandwidthReportMap,
     grpc_client: Option<myrpc::BandwidthReportClient>,
 
-    rpc_server: RpcServer,
+    rpc_server: Option<RpcServer>,
 }
 
 impl Service {
     pub fn new(cfg: config::ServerCfg) -> LongLiveS {
-        let rpcser = RpcServer::new(&cfg);
+        let rpcser = if cfg.my_grpc_addr.len() > 0 {
+            Some(RpcServer::new(&cfg))
+        } else {
+            None
+        };
+
         Rc::new(RefCell::new(Service {
             subservices: Vec::new(),
             ins_tx: None,
@@ -108,7 +113,9 @@ impl Service {
             let (trigger, tripwire) = Tripwire::new();
             self.save_instruction_trigger(trigger);
 
-            self.rpc_server.start(tx.clone()).unwrap();
+            if self.rpc_server.is_some() {
+                self.rpc_server.as_mut().unwrap().start(tx.clone()).unwrap();
+            }
 
             let clone = s.clone();
             let fut = async move {

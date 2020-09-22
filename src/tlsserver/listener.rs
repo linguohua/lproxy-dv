@@ -19,7 +19,13 @@ use stream_cancel::{Trigger, Tripwire};
 use tokio::net::{TcpListener, TcpStream};
 use tokio_tls::TlsStream;
 
-type WSStream = LwsFramed<TlsStream<TcpStream>>;
+pub type LwsTLS = LwsFramed<TlsStream<TcpStream>>;
+pub type LwsHTTP = LwsFramed<TcpStream>;
+pub enum WSStream {
+    TlsWSStream(LwsTLS),
+    HTTPWSStream(LwsHTTP),
+}
+
 type LongLive = Rc<RefCell<Listener>>;
 
 pub struct WSStreamInfo {
@@ -38,6 +44,7 @@ pub struct Listener {
     pkcs12_password: String,
     tun_path: String,
     token_key: String,
+    as_tls: bool,
 }
 
 impl Listener {
@@ -50,11 +57,16 @@ impl Listener {
             pkcs12_password: cfg.pkcs12_password.to_string(),
             tun_path: etcdcfg.tun_path.to_string(),
             token_key: cfg.token_key.to_string(),
+            as_tls:cfg.as_tls,
         }))
     }
 
     pub fn init(&mut self, s: LongLive) -> Result<(), Error> {
-        self.start_server(s)
+        if self.as_tls {
+            self.start_tls_server(s)
+        } else {
+            self.start_http_server(s)
+        }
     }
 
     pub fn stop(&mut self) {
@@ -67,7 +79,7 @@ impl Listener {
         self.tun_path = etcdcfg.tun_path.to_string();
     }
 
-    fn start_server(&mut self, ll: LongLive) -> Result<(), Error> {
+    fn start_tls_server(&mut self, ll: LongLive) -> Result<(), Error> {
         // Bind the server's socket
         let addr: std::net::SocketAddr = self.listen_addr.parse()?;
         let socket_tcp = std::net::TcpListener::bind(addr)?;
@@ -116,7 +128,7 @@ impl Listener {
                                             if p.contains(&s.tun_path) {
                                                 s.on_accept_proxy_websocket(
                                                     rawfd,
-                                                    lstream,
+                                                    WSStream::TlsWSStream(lstream),
                                                     dns == "1",
                                                     p,
                                                 );
@@ -124,7 +136,7 @@ impl Listener {
                                         }
                                     }
                                     Err(e) => {
-                                        error!("[Server]TLS do_server_hanshake error:{}", e);
+                                        error!("[Server]LWS do_server_hanshake error:{}", e);
                                     }
                                 },
                                 Err(e) => {
@@ -134,6 +146,84 @@ impl Listener {
                         };
                         // task
                         tokio::task::spawn_local(tls_accept);
+                    }
+                    Err(e) => {
+                        error!("[Server]server accept error {:?}", e);
+                        match e.raw_os_error() {
+                            Some(code) => {
+                                if code != 24 {
+                                    // error Os { code: 24, kind: Other, message: "Too many open files" }
+                                    break;
+                                }
+                            }
+                            None => {
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            info!("[Server]accept future completed");
+        };
+        tokio::task::spawn_local(server);
+
+        Ok(())
+    }
+
+
+    fn start_http_server(&mut self, ll: LongLive) -> Result<(), Error> {
+        // Bind the server's socket
+        let addr: std::net::SocketAddr = self.listen_addr.parse()?;
+        let socket_tcp = std::net::TcpListener::bind(addr)?;
+        let mut tcp = TcpListener::from_std(socket_tcp)?;
+
+        info!(
+            "[Server]listener at:{}, pkcs12:{}",
+            self.listen_addr, self.pkcs12
+        );
+
+        // Create the http acceptor.
+        let (trigger, tripwire) = Tripwire::new();
+        self.listener_trigger = Some(trigger);
+
+        let server = async move {
+            let mut tcp = tcp.incoming().take_until(tripwire);
+
+            while let Some(tcps) = tcp.next().await {
+                match tcps {
+                    Ok(tcpx) => {
+                        let rawfd = tcpx.as_raw_fd();
+                        let ll2 = ll.clone();
+
+                        let fut_accept = async move {
+                            match lws::do_server_hanshake(tcpx).await {
+                                Ok((lsocket, path)) => {
+                                    if path.is_some() {
+                                        let p = path.unwrap();
+                                        info!("[Server]path:{}", p);
+                                        let lstream = lws::LwsFramed::new(lsocket, None);
+                                        let s = ll2.clone();
+                                        let mut s = s.borrow_mut();
+                                        let dns = find_str_from_query_string(&p, "dns=");
+                                        if p.contains(&s.tun_path) {
+                                            s.on_accept_proxy_websocket(
+                                                rawfd,
+                                                WSStream::HTTPWSStream(lstream),
+                                                dns == "1",
+                                                p,
+                                            );
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    error!("[Server]LWS do_server_hanshake error:{}", e);
+                                }
+                            }
+                        };
+
+                        // task
+                        tokio::task::spawn_local(fut_accept);
                     }
                     Err(e) => {
                         error!("[Server]server accept error {:?}", e);

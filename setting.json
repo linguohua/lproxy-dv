@@ -12,5 +12,6 @@
     "tun_path": "abc",
     "my_grpc_addr": "0.0.0.0",
     "my_grpc_port": 8008,
-    "hub_grpc_addr": "127.0.0.1:8000"
+    "hub_grpc_addr": "127.0.0.1:8000",
+    "asTLS": true
 }

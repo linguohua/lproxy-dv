@@ -1,9 +1,11 @@
 use super::Tunnel;
 use super::{LongLiveTM, LongLiveUD, UserDevice};
-use crate::tlsserver::WSStreamInfo;
+use crate::tlsserver::{WSStreamInfo, WSStream, LwsHTTP, LwsTLS};
 use futures::prelude::*;
 use log::{debug, error, info};
 use tokio;
+use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver};
+use crate::lws;
 
 pub fn serve_websocket(
     wsinfo: WSStreamInfo,
@@ -35,7 +37,7 @@ pub fn serve_websocket(
     // Create a channel for our stream, which other sockets will use to
     // send us messages. Then register our address with the stream to send
     // data to us.
-    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    let (tx, rx) = unbounded_channel();
     let rawfd = wsinfo.rawfd;
 
     let t = {
@@ -69,9 +71,23 @@ pub fn serve_websocket(
 
     let t2 = t.clone();
 
+    // TODO: use generic function to reduce duplicate code
+    match ws_stream {
+        WSStream::HTTPWSStream(hws) => {
+            serve_wsstream_http(hws, s2, t2, rx, has_flowctl);
+        },
+        WSStream::TlsWSStream(tls) => {
+            serve_wsstream_tls(tls, s2, t2, rx, has_flowctl);
+        }
+    };
+}
+
+fn serve_wsstream_tls (ws: LwsTLS, s: LongLiveTM, t: super::LongLiveTun, rx: UnboundedReceiver<lws::WMessage>, has_flowctl: bool) {
     // `sink` is the stream of messages going out.
     // `stream` is the stream of incoming messages.
-    let (sink, mut stream) = ws_stream.split();
+    let (sink, mut stream) = ws.split();
+
+    let t2 = t.clone();
 
     let receive_fut = async move {
         while let Some(message) = stream.next().await {
@@ -97,7 +113,45 @@ pub fn serve_websocket(
     let select_fut = async move {
         future::select(receive_fut.boxed_local(), send_fut).await;
         info!("[tunserv] both websocket futures completed");
-        let mut rf = s2.borrow_mut();
+        let mut rf = s.borrow_mut();
+        rf.on_tunnel_closed(t2.clone());
+    };
+
+    tokio::task::spawn_local(select_fut);
+}
+
+fn serve_wsstream_http (ws: LwsHTTP, s: LongLiveTM, t: super::LongLiveTun, rx: UnboundedReceiver<lws::WMessage>, has_flowctl: bool) {
+    // `sink` is the stream of messages going out.
+    // `stream` is the stream of incoming messages.
+    let (sink, mut stream) = ws.split();
+
+    let t2 = t.clone();
+
+    let receive_fut = async move {
+        while let Some(message) = stream.next().await {
+            debug!("[tunserv]tunnel read a message");
+            match message {
+                Ok(m) => {
+                    // post to manager
+                    let mut clone = t.borrow_mut();
+                    clone.on_tunnel_msg(m, t.clone());
+                }
+                Err(e) => {
+                    error!("[tunserv]stream.next error:{}", e);
+                    break;
+                }
+            }
+        }
+    };
+
+    let rx = rx.map(|x| Ok(x));
+    let send_fut = rx.forward(super::SinkEx::new(sink, t2.clone(), has_flowctl)); // TODO:
+
+    // Wait for one future to complete.
+    let select_fut = async move {
+        future::select(receive_fut.boxed_local(), send_fut).await;
+        info!("[tunserv] both websocket futures completed");
+        let mut rf = s.borrow_mut();
         rf.on_tunnel_closed(t2.clone());
     };
 

@@ -29,6 +29,8 @@ pub struct ServerCfg {
 
     pub tun_path: String,
     pub hub_grpc_addr: String,
+
+    pub as_tls: bool,
 }
 
 impl ServerCfg {
@@ -102,12 +104,17 @@ impl ServerCfg {
 
         let my_grpc_addr = match v["my_grpc_addr"].as_str() {
             Some(t) => t.to_string(),
-            None => "0.0.0.0".to_string(),
+            None => String::default(),
         };
 
         let my_grpc_port = match v["my_grpc_port"].as_u64() {
             Some(t) => t as u16,
             None => 8008,
+        };
+
+        let as_tls = match v["as_tls"].as_bool() {
+            Some(t) => t,
+            None => true,
         };
 
         let servercfg = ServerCfg {
@@ -125,6 +132,7 @@ impl ServerCfg {
             my_grpc_addr,
             my_grpc_port,
             hub_grpc_addr,
+            as_tls,
         };
 
         if !servercfg.is_valid() {
